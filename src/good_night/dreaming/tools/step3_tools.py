@@ -20,6 +20,7 @@ class ResolutionActionDraft:
     id: str
     artifact_type: str
     name: str
+    description: str  # Short description of what this action does
     target_path: str
     operation: str
     content: dict[str, Any]
@@ -130,6 +131,7 @@ class Step3Context:
         self,
         artifact_type: str = "",
         name: str = "",
+        description: str = "",
         content: dict[str, Any] | None = None,
         issue_refs: list[str] | None = None,
         target_path: str | None = None,
@@ -144,6 +146,8 @@ class Step3Context:
             return json.dumps({"error": "artifact_type is required"})
         if not name:
             return json.dumps({"error": "name is required"})
+        if not description:
+            return json.dumps({"error": "description is required (short description of what this action does)"})
         if not content:
             return json.dumps({
                 "error": "content is required",
@@ -197,6 +201,7 @@ class Step3Context:
             id=str(uuid.uuid4())[:8],
             artifact_type=artifact_type,
             name=name,
+            description=description,
             target_path=target_path,
             operation=operation,
             content=content,
@@ -353,6 +358,8 @@ class Step3Context:
                 target=a.target_path,
                 operation=a.operation,
                 content=a.content,
+                name=a.name,
+                description=a.description,
                 issue_refs=a.issue_refs,
                 references=a.references,
                 priority=a.priority,
@@ -463,7 +470,11 @@ def create_step3_tools(context: Step3Context) -> list[ToolDefinition]:
                 },
                 "name": {
                     "type": "string",
-                    "description": "Name/identifier of the artifact",
+                    "description": "Short display name for the artifact (e.g., 'Fix Auth Timeout', 'Handle API Errors')",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Short description of what this action does (1-2 sentences)",
                 },
                 "content": content_schema,
                 "issue_refs": {
@@ -497,7 +508,7 @@ def create_step3_tools(context: Step3Context) -> list[ToolDefinition]:
                     "default": False,
                 },
             },
-            required=["artifact_type", "name", "content", "issue_refs"],
+            required=["artifact_type", "name", "description", "content", "issue_refs"],
         ),
         ToolBuilder.create(
             name="list_pending_actions",

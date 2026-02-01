@@ -284,8 +284,9 @@ class DreamingManager: ObservableObject {
             for action in actions {
                 let resolution = Resolution(
                     id: UUID().uuidString,
-                    name: action["target"] as? String ?? "Unknown",
+                    name: action["name"] as? String ?? action["target"] as? String ?? "Unknown",
                     type: action["type"] as? String ?? "unknown",
+                    description: action["description"] as? String ?? "",
                     content: action["content"] as? [String: Any] ?? [:],
                     directories: extractDirectories(from: action),
                     rationale: action["rationale"] as? String ?? "",
@@ -453,6 +454,7 @@ struct Resolution: Identifiable {
     let id: String
     let name: String
     let type: String
+    let description: String
     let content: [String: Any]
     let directories: [String]
     let rationale: String
@@ -460,16 +462,6 @@ struct Resolution: Identifiable {
     let sourceFile: URL
     let isLocalChange: Bool
     let operation: String
-
-    var contentDescription: String {
-        if let title = content["title"] as? String {
-            return title
-        }
-        if let description = content["description"] as? String {
-            return String(description.prefix(200))
-        }
-        return "No description"
-    }
 
     var displayType: String {
         switch type {

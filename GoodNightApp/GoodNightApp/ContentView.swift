@@ -238,7 +238,7 @@ struct ResolutionCard: View {
             }
 
             // Content preview
-            Text(resolution.contentDescription)
+            Text(resolution.description.isEmpty ? "No description" : resolution.description)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(isExpanded ? nil : 2)

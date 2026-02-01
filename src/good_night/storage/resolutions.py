@@ -37,6 +37,8 @@ class ResolutionAction:
     target: str  # e.g., path to skill file
     operation: str  # create, update, append
     content: dict[str, Any]
+    name: str = ""  # Short display name for the action
+    description: str = ""  # Short description of what this action does
     issue_refs: list[str] = field(default_factory=list)
     references: list[ConversationReference] = field(default_factory=list)  # Conversation context
     priority: str = "medium"
@@ -80,6 +82,8 @@ class Resolution:
                             "target": a.target,
                             "operation": a.operation,
                             "content": a.content,
+                            "name": a.name,
+                            "description": a.description,
                             "issue_refs": a.issue_refs,
                             "references": [r.to_dict() for r in a.references],
                             "priority": a.priority,
@@ -111,6 +115,8 @@ class Resolution:
                     target=a["target"],
                     operation=a["operation"],
                     content=a.get("content", {}),
+                    name=a.get("name", ""),
+                    description=a.get("description", ""),
                     issue_refs=a.get("issue_refs", []),
                     references=[
                         ConversationReference.from_dict(r)
