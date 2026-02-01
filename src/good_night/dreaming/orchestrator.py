@@ -9,6 +9,7 @@ from typing import Callable
 
 from ..config import Config, load_config
 from ..connectors.factory import ConnectorFactory
+from ..observability import init_weave
 from ..providers.bedrock_provider import AWSAuthenticationError
 from ..providers.factory import ProviderFactory
 from ..storage.state import StateManager
@@ -156,6 +157,10 @@ class DreamingOrchestrator:
         run_id = str(uuid.uuid4())
         result = DreamingResult(run_id=run_id)
 
+        # Initialize Weave tracing (auto-traces LLM calls)
+        # Uses WANDB_API_KEY from environment
+        init_weave()
+
         # Start event stream
         self.event_stream.start(run_id)
 
@@ -282,7 +287,23 @@ class DreamingOrchestrator:
 
                 # Update connector state
                 if conversations and not self.dry_run:
-                    latest_ts = max(c.ended_at or c.started_at for c in conversations)
+                    # Normalize timestamps to avoid comparing naive and aware datetimes
+                    def normalize_ts(ts: datetime | None) -> datetime | None:
+                        if ts is None:
+                            return None
+                        # Make all timestamps timezone-aware (UTC)
+                        if ts.tzinfo is None:
+                            from datetime import timezone
+                            return ts.replace(tzinfo=timezone.utc)
+                        return ts
+
+                    timestamps = [
+                        normalize_ts(c.ended_at) or normalize_ts(c.started_at)
+                        for c in conversations
+                    ]
+                    # Filter out None values
+                    valid_timestamps = [ts for ts in timestamps if ts is not None]
+                    latest_ts = max(valid_timestamps) if valid_timestamps else None
                     self.state_manager.update_connector_state(
                         connector.connector_id,
                         last_processed=latest_ts,

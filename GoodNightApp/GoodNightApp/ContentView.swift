@@ -235,6 +235,13 @@ struct ResolutionCard: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+
+                Button(action: { dreamingManager.dismissResolution(resolution) }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
             }
 
             // Content preview

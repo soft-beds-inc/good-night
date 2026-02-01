@@ -354,6 +354,11 @@ class DreamingManager: ObservableObject {
         resolutions.removeAll { $0.id == resolution.id }
     }
 
+    func dismissResolution(_ resolution: Resolution) {
+        // Remove from UI list (doesn't delete the file)
+        resolutions.removeAll { $0.id == resolution.id }
+    }
+
     func testDream() {
         guard !isDreaming else { return }
 

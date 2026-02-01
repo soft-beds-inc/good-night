@@ -213,7 +213,13 @@ class ClaudeCodeConnector(SourceConnector):
                 # Filter by modification time if since is provided
                 if since:
                     mtime = datetime.fromtimestamp(jsonl_file.stat().st_mtime)
-                    if mtime < since:
+                    # Convert since to local naive time for comparison
+                    if since.tzinfo:
+                        # Convert UTC to local time, then strip tzinfo
+                        since_cmp = since.astimezone().replace(tzinfo=None)
+                    else:
+                        since_cmp = since
+                    if mtime < since_cmp:
                         continue
                 session_files.append(jsonl_file)
 

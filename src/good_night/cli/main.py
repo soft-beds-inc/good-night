@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 import typer
+
+# Load .env from current directory or parent directories
+load_dotenv()
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
@@ -244,14 +248,52 @@ def dream(
     limit: Optional[int] = typer.Option(
         None, "--limit", "-l", help="Limit to last N conversations (for testing)"
     ),
+    days: Optional[int] = typer.Option(
+        None, "--days", "-d", help="Days to look back (for first run)"
+    ),
 ) -> None:
     """Trigger a dreaming cycle manually."""
     from ..dreaming.orchestrator import DreamingOrchestrator
+    from ..storage.state import StateManager
 
     config = load_config()
     runtime_dir = get_runtime_dir()
 
+    # Check if this is first run and days not specified
+    state_manager = StateManager(runtime_dir)
+    connector_ids = [connector] if connector else config.enabled.connectors
+
+    is_first_run = False
+    for conn_id in connector_ids:
+        conn_state = state_manager.get_connector_state(conn_id)
+        if conn_state.last_processed is None:
+            is_first_run = True
+            break
+
+    # If first run and no --days flag, ask interactively
+    if is_first_run and days is None and limit is None:
+        console.print("[cyan]First run detected. How many days back should I analyze?[/cyan]")
+        console.print("  [dim]This determines how much conversation history to process.[/dim]")
+        console.print("  [dim]More days = more comprehensive but slower and more expensive.[/dim]")
+        console.print()
+
+        days_input = typer.prompt(
+            "Days to look back",
+            default=str(config.dreaming.initial_lookback_days),
+        )
+        try:
+            days = int(days_input)
+        except ValueError:
+            days = config.dreaming.initial_lookback_days
+
+    # Update config with days override if specified
+    if days is not None:
+        config.dreaming.initial_lookback_days = days
+
     console.print("[cyan]Starting dreaming cycle...[/cyan]")
+
+    if days is not None:
+        console.print(f"[dim]Looking back {days} days[/dim]")
 
     if dry_run:
         console.print("[yellow]Dry run mode - no changes will be made[/yellow]")

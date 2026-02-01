@@ -44,6 +44,10 @@ htmlcov/
 dmypy.json
 .pyright/
 
+# Environment
+.env
+.env.*
+
 # Misc
 *.log
 .DS_Store

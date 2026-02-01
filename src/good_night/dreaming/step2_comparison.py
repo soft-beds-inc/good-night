@@ -16,30 +16,58 @@ from .tools.step2_tools import Step2Context, create_step2_tools
 logger = logging.getLogger("good-night.comparison")
 
 
-COMPARISON_BASE_PROMPT = """You are comparing current issues with historical resolutions.
+COMPARISON_BASE_PROMPT = """You are the FILTERING and COMPARISON agent for the dreaming system.
 
-Your task is to determine the status of each current issue:
-- "new": No similar historical resolution exists
-- "recurring": Similar issue was addressed before but keeps happening
-- "already_resolved": Exact or very similar issue was already resolved
+Step 1 detected potential issues with a wide net. YOUR job is to:
+1. FILTER: Decide which issues are worth acting on (include) vs noise (exclude)
+2. COMPARE: Check issues against historical resolutions
 
-For each current issue:
-1. Use compare_issue_to_resolutions to find potential matches
-2. Review match scores and details
-3. Link issues to relevant resolutions
-4. Mark the issue's status appropriately
+================================================================================
+FILTERING CRITERIA - Be selective! Only INCLUDE issues that:
+================================================================================
 
-Guidelines:
-- Similarity score > 0.85 suggests "already_resolved"
-- Similarity score 0.6-0.85 suggests "recurring"
-- Similarity score < 0.6 suggests "new"
-- Consider the rationale and context, not just scores
+INCLUDE if:
+- Cross-conversation pattern: Issue appears in 2+ different sessions
+- Significant single-session issue: Major frustration or capability gap
+- Recurring problem: Similar issue was "resolved" before but keeps happening
+- Clear improvement opportunity: Resolution would meaningfully help the user
 
-When marking as recurring:
-- Link to the previous resolution
-- Note what might need updating
+EXCLUDE if:
+- One-time occurrence: Normal back-and-forth, user just refining their request
+- Already working: Previous resolution is effective, no need to change
+- Weak evidence: Not enough examples to justify action
+- Minor/cosmetic: Not worth the effort to resolve
+- Normal interaction: Standard iterative refinement is expected
 
-Be systematic: process each issue in order.
+================================================================================
+HISTORICAL COMPARISON
+================================================================================
+
+For issues you're considering including:
+- Check if similar issues were previously resolved
+- Mark status: "new", "recurring", or "already_resolved"
+- Link to relevant historical resolutions
+
+Guidelines for status:
+- "already_resolved" (score > 0.85): Very similar issue was resolved → EXCLUDE
+- "recurring" (score 0.6-0.85): Issue keeps happening despite resolution → INCLUDE
+- "new" (score < 0.6): No prior resolution → INCLUDE if significant
+
+================================================================================
+YOUR WORKFLOW
+================================================================================
+
+1. Get all issues with get_current_issues()
+2. For each issue:
+   a. Get full details with get_issue_details()
+   b. Assess: Is this a real pattern or noise?
+   c. Compare with history using compare_issue_to_resolutions()
+   d. Mark status (new/recurring/already_resolved)
+   e. DECIDE: include_issue() or exclude_issue()
+3. Check progress with get_filtering_summary()
+
+IMPORTANT: Every issue must be either included or excluded. Don't leave issues pending.
+Only INCLUDED issues will go to Step 3 for resolution generation.
 """
 
 
@@ -91,7 +119,7 @@ class ComparisonStep:
             agent_id=agent_id,
             agent_type="comparison",
             event_type="thinking",
-            summary=f"Comparing {len(enriched.issues)} issues with history",
+            summary=f"Filtering and comparing {len(enriched.issues)} issues",
         ))
 
         # Create context
@@ -109,13 +137,13 @@ class ComparisonStep:
             for t in tools
         ]
 
-        # Configure agent
+        # Configure agent - more turns since we're filtering each issue
         config = AgentConfig(
             model=None,
             system_prompt=COMPARISON_BASE_PROMPT,
             tools=tools,
-            max_turns=20,
-            temperature=0.5,  # Lower temperature for more consistent comparisons
+            max_turns=40,  # More turns for filtering + comparison
+            temperature=0.5,  # Lower temperature for more consistent decisions
             max_tokens=4096,
         )
 
@@ -133,21 +161,20 @@ class ComparisonStep:
             # Extract token usage
             step2_usage = response.usage
 
-            # Emit completion event
-            new_count = len([i for i in context.issues if i.status == "new"])
-            recurring_count = len([i for i in context.issues if i.status == "recurring"])
-            resolved_count = len([i for i in context.issues if i.status == "already_resolved"])
+            # Get filtering results
+            included_count = len(context.included_issues)
+            excluded_count = len(context.excluded_issues)
 
+            # Emit completion event
             self.event_stream.emit(AgentEvent(
                 timestamp=datetime.now(),
                 agent_id=agent_id,
                 agent_type="comparison",
                 event_type="complete",
-                summary=f"{new_count} new, {recurring_count} recurring, {resolved_count} resolved",
+                summary=f"{included_count} included, {excluded_count} excluded",
                 details={
-                    "new": new_count,
-                    "recurring": recurring_count,
-                    "resolved": resolved_count,
+                    "included": included_count,
+                    "excluded": excluded_count,
                     "tokens": step2_usage.total_tokens,
                 },
             ))
@@ -170,14 +197,30 @@ class ComparisonStep:
         # Accumulate token usage (step1 + step2)
         enriched.token_usage = enriched.token_usage + step2_usage
 
+        # Filter out excluded issues - only keep included issues for Step 3
+        original_count = len(enriched.issues)
+        if context.included_issues:
+            # Only keep explicitly included issues
+            enriched.issues = [
+                i for i in enriched.issues
+                if i.id in context.included_issues
+            ]
+        else:
+            # If no issues were explicitly included, filter out excluded ones
+            enriched.issues = [
+                i for i in enriched.issues
+                if i.id not in context.excluded_issues
+            ]
+
         # Update summary
         new_count = len(enriched.new_issues)
         recurring_count = len(enriched.recurring_issues)
-        resolved_count = len(enriched.resolved_issues)
+        excluded_count = original_count - len(enriched.issues)
 
         enriched.summary = (
-            f"{new_count} new issues, {recurring_count} recurring, "
-            f"{resolved_count} already resolved"
+            f"{len(enriched.issues)} issues for resolution "
+            f"({new_count} new, {recurring_count} recurring), "
+            f"{excluded_count} filtered out"
         )
 
         return enriched
@@ -189,16 +232,24 @@ class ComparisonStep:
             for i in issues
         ])
 
-        return f"""Compare these {len(issues)} issues with historical resolutions:
+        return f"""Filter and compare these {len(issues)} issues from Step 1:
 
 {issue_list}
 
-For each issue:
-1. Use compare_issue_to_resolutions to find matches
-2. If good matches exist (score > 0.6), link them using link_issue_to_resolution
-3. Mark status using mark_issue_status (new, recurring, or already_resolved)
+For EACH issue you must:
+1. Get details with get_issue_details()
+2. Assess: Is this worth acting on or is it noise?
+3. Compare with history using compare_issue_to_resolutions()
+4. Mark status (new/recurring/already_resolved)
+5. Make a decision: include_issue() or exclude_issue()
 
-Process all issues systematically."""
+Remember:
+- Step 1 cast a wide net - many issues may be noise
+- Only INCLUDE cross-conversation patterns or significant issues
+- EXCLUDE one-time occurrences, normal back-and-forth, already-resolved
+- Every issue must be decided (included or excluded)
+
+Start by getting the full issue list, then process each one."""
 
     async def _compare_non_agentic(self, enriched: EnrichedReport) -> EnrichedReport:
         """Fall back to non-agentic comparison (original implementation)."""
@@ -211,7 +262,23 @@ Process all issues systematically."""
 
         # Compare each issue
         for issue in enriched.issues:
+            # First check file-based recent resolutions
             links, status = self._find_historical_matches(issue, recent_resolutions)
+
+            # Also search Redis for older resolutions (7+ days)
+            redis_matches = await self._search_redis_history(issue)
+            if redis_matches:
+                links.extend(redis_matches)
+                links.sort(key=lambda x: x.relevance_score, reverse=True)
+                links = links[:5]  # Keep top 5
+
+                # Update status based on best match
+                best_score = links[0].relevance_score if links else 0.0
+                if best_score > 0.9:
+                    status = "already_resolved"
+                elif best_score > 0.7:
+                    status = "recurring"
+
             issue.historical_links = links
             issue.status = status
             issue.is_recurring = status == "recurring"
@@ -227,6 +294,48 @@ Process all issues systematically."""
         )
 
         return enriched
+
+    async def _search_redis_history(self, issue: EnrichedIssue) -> list:
+        """Search Redis vector store for similar historical resolutions."""
+        from .report import HistoricalLink
+
+        try:
+            from ..storage.redis_vectors import get_vector_store
+
+            store = get_vector_store()
+
+            # Build issue dict for search
+            issue_dict = {
+                "type": issue.type.value,
+                "title": issue.title,
+                "description": issue.description,
+            }
+
+            # Search for similar resolutions older than 7 days
+            results = store.search_by_issue(
+                issue=issue_dict,
+                k=5,
+                min_age_days=7,
+            )
+
+            # Convert to HistoricalLink objects
+            links = []
+            for result in results:
+                links.append(HistoricalLink(
+                    resolution_id=result["resolution_id"],
+                    skill_path=result["target"],
+                    description=result["rationale"] or result["description"],
+                    relevance_score=result["score"],
+                ))
+
+            if links:
+                logger.info(f"Found {len(links)} similar resolutions in Redis for issue: {issue.title[:50]}")
+
+            return links
+
+        except Exception as e:
+            logger.debug(f"Redis search failed (non-critical): {e}")
+            return []
 
     def _find_historical_matches(
         self,

@@ -128,23 +128,44 @@ struct SkyAuraView: View {
 
 struct DreamingTextView: View {
     @ObservedObject var skyState = SkyState.shared
+    @State private var visibleWords: Int = 0
+
+    private let words = ["it ", "is ", "dreaming", ".", ".", "."]
 
     var body: some View {
-        Text("it is dreaming...")
-            .font(.custom("Roboto-Italic", size: 32))
-            .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.2))
-            .transformEffect(CGAffineTransform(a: 1, b: 0, c: -0.04, d: 1, tx: 0, ty: 0))
-            .shadow(color: .black, radius: 0, x: -3, y: 0)
-            .shadow(color: .black, radius: 0, x: 3, y: 0)
-            .shadow(color: .black, radius: 0, x: 0, y: -3)
-            .shadow(color: .black, radius: 0, x: 0, y: 3)
-            .shadow(color: .black, radius: 0, x: -2, y: -2)
-            .shadow(color: .black, radius: 0, x: 2, y: -2)
-            .shadow(color: .black, radius: 0, x: -2, y: 2)
-            .shadow(color: .black, radius: 0, x: 2, y: 2)
-            .shadow(color: .black, radius: 2, x: 0, y: 0)
-            .opacity(skyState.isTextVisible ? 0.9 : 0)
-            .animation(.easeInOut(duration: 1.0), value: skyState.isTextVisible)
+        HStack(spacing: 0) {
+            ForEach(0..<words.count, id: \.self) { index in
+                Text(words[index])
+                    .opacity(visibleWords > index ? 0.9 : 0)
+                    .animation(.easeInOut(duration: 1.0), value: visibleWords)
+            }
+        }
+        .font(.custom("Roboto-Italic", size: 32))
+        .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.2))
+        .transformEffect(CGAffineTransform(a: 1, b: 0, c: -0.04, d: 1, tx: 0, ty: 0))
+        .shadow(color: .black, radius: 0, x: -3, y: 0)
+        .shadow(color: .black, radius: 0, x: 3, y: 0)
+        .shadow(color: .black, radius: 0, x: 0, y: -3)
+        .shadow(color: .black, radius: 0, x: 0, y: 3)
+        .shadow(color: .black, radius: 0, x: -2, y: -2)
+        .shadow(color: .black, radius: 0, x: 2, y: -2)
+        .shadow(color: .black, radius: 0, x: -2, y: 2)
+        .shadow(color: .black, radius: 0, x: 2, y: 2)
+        .shadow(color: .black, radius: 2, x: 0, y: 0)
+        .onChange(of: skyState.isTextVisible) { visible in
+            if visible {
+                // Show words one by one
+                visibleWords = 0
+                for i in 1...words.count {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 1.5) {
+                        visibleWords = i
+                    }
+                }
+            } else {
+                // Hide all at once
+                visibleWords = 0
+            }
+        }
     }
 }
 
