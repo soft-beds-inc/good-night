@@ -48,16 +48,19 @@ struct HeaderView: View {
                 }
                 .buttonStyle(.bordered)
             } else {
-                Button("Test") {
-                    dreamingManager.testDream()
+                // Hide Test button in demo mode
+                if !DreamingManager.demoMode {
+                    Button("Test") {
+                        dreamingManager.testDream()
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
 
                 Button("Dream") {
                     dreamingManager.startDreaming()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(dreamingManager.isFirstRun && dreamingManager.daysToLookback == 0)
+                .disabled(!DreamingManager.demoMode && dreamingManager.isFirstRun && dreamingManager.daysToLookback == 0)
             }
         }
         .padding()

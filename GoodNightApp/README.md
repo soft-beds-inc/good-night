@@ -78,6 +78,23 @@ Each card shows:
 - `DreamingManager.swift` - CLI integration and state management
 - `SheepAnimationView.swift` - The sheep jumping animation
 
+## Demo Mode
+
+Launch the app with the `--demo` flag for presentation/demo purposes:
+
+```bash
+open /Applications/GoodNightApp.app --args --demo
+```
+
+In demo mode:
+- No existing resolution cards are shown at startup
+- The "Test" button is hidden
+- Only the "Dream" button is visible
+- Clicking "Dream" triggers a 15-second sky overlay animation
+- After the animation, real resolutions are loaded and displayed
+
+This is useful for live demos where you want to show the full dreaming experience from scratch.
+
 ## Requirements
 
 The app requires the `good-night` CLI to be installed. Install it with:

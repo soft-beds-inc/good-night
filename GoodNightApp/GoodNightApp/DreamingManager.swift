@@ -8,6 +8,9 @@ private let logger = Logger(subsystem: "com.goodnight.app", category: "dreaming"
 class DreamingManager: ObservableObject {
     static let shared = DreamingManager()
 
+    /// Check if demo mode is enabled via --demo flag
+    static let demoMode: Bool = CommandLine.arguments.contains("--demo")
+
     @Published var isDreaming = false
     @Published var resolutions: [Resolution] = []
     @Published var dreamError: String?
@@ -19,8 +22,11 @@ class DreamingManager: ObservableObject {
     private var process: Process?
 
     private init() {
-        checkFirstRun()
-        loadResolutions()
+        // In demo mode, don't load existing resolutions
+        if !DreamingManager.demoMode {
+            checkFirstRun()
+            loadResolutions()
+        }
     }
 
     func checkFirstRun() {
@@ -72,8 +78,35 @@ class DreamingManager: ObservableObject {
             SkyOverlayWindow.show()
         }
 
-        Task {
-            await runDreamCycle()
+        // Use demo mode if enabled
+        if DreamingManager.demoMode {
+            Task {
+                await runDemoDreamCycle()
+            }
+        } else {
+            Task {
+                await runDreamCycle()
+            }
+        }
+    }
+
+    private func runDemoDreamCycle() async {
+        print("[Demo] Starting demo dream cycle...")
+
+        // Sleep for 15 seconds
+        try? await Task.sleep(nanoseconds: 15_000_000_000)
+
+        await MainActor.run {
+            // Hide sky overlay
+            SkyOverlayWindow.hide()
+
+            // Load real resolutions now
+            loadResolutions()
+
+            isDreaming = false
+            isFirstRun = false
+
+            print("[Demo] Dream cycle complete, showing \(resolutions.count) resolutions")
         }
     }
 
