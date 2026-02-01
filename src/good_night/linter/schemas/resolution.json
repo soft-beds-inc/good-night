@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://good-night.dev/schemas/resolution.json",
+  "title": "Good Night Resolution",
+  "description": "Schema for Good Night resolution files",
+  "type": "object",
+  "required": ["resolutions"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this resolution"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this resolution was created"
+        },
+        "dreaming_run_id": {
+          "type": "string",
+          "description": "ID of the dreaming run that generated this"
+        }
+      }
+    },
+    "resolutions": {
+      "type": "array",
+      "description": "List of connector-specific resolutions",
+      "items": {
+        "type": "object",
+        "required": ["connector_id", "actions"],
+        "properties": {
+          "connector_id": {
+            "type": "string",
+            "description": "ID of the source connector"
+          },
+          "actions": {
+            "type": "array",
+            "description": "List of resolution actions",
+            "items": {
+              "type": "object",
+              "required": ["type", "target", "operation"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Type of artifact to create/modify",
+                  "enum": ["skill"]
+                },
+                "target": {
+                  "type": "string",
+                  "description": "Path to the target artifact"
+                },
+                "operation": {
+                  "type": "string",
+                  "description": "Operation to perform",
+                  "enum": ["create", "update", "append"]
+                },
+                "content": {
+                  "type": "object",
+                  "description": "Content for the artifact",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the skill"
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Description of what the skill does"
+                    },
+                    "when_to_use": {
+                      "type": "string",
+                      "description": "Conditions for using this skill"
+                    },
+                    "instructions": {
+                      "type": "string",
+                      "description": "Detailed instructions for the AI"
+                    },
+                    "examples": {
+                      "type": "string",
+                      "description": "Example usages"
+                    }
+                  }
+                },
+                "issue_refs": {
+                  "type": "array",
+                  "description": "IDs of issues this action addresses",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "priority": {
+                  "type": "string",
+                  "description": "Priority level",
+                  "enum": ["low", "medium", "high"],
+                  "default": "medium"
+                },
+                "rationale": {
+                  "type": "string",
+                  "description": "Explanation of why this resolution helps"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

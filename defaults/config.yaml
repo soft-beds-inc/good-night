@@ -1,0 +1,31 @@
+daemon:
+  poll_interval: 60
+  dream_interval: 3600
+  log_level: INFO
+
+api:
+  enabled: true
+  host: 127.0.0.1
+  port: 7777
+
+provider:
+  default: bedrock
+  bedrock:
+    region: us-east-1
+    model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-sonnet-4-20250514
+
+enabled:
+  connectors:
+    - claude-code
+  artifacts:
+    - claude-skills
+  prompts:
+    - pattern-detection
+    - frustration-signals
+
+dreaming:
+  exploration_agents: 1
+  historical_lookback: 7
