@@ -15,6 +15,7 @@
 		A1000001005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000002005 /* Assets.xcassets */; };
 		A1000001006 /* night.png in Resources */ = {isa = PBXBuildFile; fileRef = A1000002006 /* night.png */; };
 		A1000001007 /* mixkit-little-bird-calling-chirp-23.wav in Resources */ = {isa = PBXBuildFile; fileRef = A1000002007 /* mixkit-little-bird-calling-chirp-23.wav */; };
+		A1000001009 /* Roboto-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A100000200B /* Roboto-Italic.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 		A1000003001 /* GoodNightApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GoodNightApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000002008 /* GoodNightApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GoodNightApp.entitlements; sourceTree = "<group>"; };
 		A1000002009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A100000200B /* Roboto-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Roboto-Italic.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +65,7 @@
 				A1000002007 /* mixkit-little-bird-calling-chirp-23.wav */,
 				A1000002008 /* GoodNightApp.entitlements */,
 				A1000002009 /* Info.plist */,
+				A100000200B /* Roboto-Italic.ttf */,
 			);
 			path = GoodNightApp;
 			sourceTree = "<group>";
@@ -136,6 +139,7 @@
 				A1000001005 /* Assets.xcassets in Resources */,
 				A1000001006 /* night.png in Resources */,
 				A1000001007 /* mixkit-little-bird-calling-chirp-23.wav in Resources */,
+				A1000001009 /* Roboto-Italic.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -364,8 +364,8 @@ class DreamingManager: ObservableObject {
             SkyOverlayWindow.show()
         }
 
-        // Wait 5 seconds then complete
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        // Wait 10 seconds then complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             SkyOverlayWindow.hide()
             self?.sendCompletionNotification()
             self?.isDreaming = false

@@ -1,7 +1,7 @@
 # Project Preferences
 
-## Issue Detection
-- Don't flag one-off corrections or directional requests as patterns requiring skills
-- Only create issues for truly repeatable problems that appear multiple times
-- One-time corrections within a single session are not patterns - they're normal interaction
-- Focus on issues that would genuinely improve workflow if automated, not minor variations
+## Xcode Project Structure
+- The Xcode project (GoodNightApp.xcodeproj) is located in the GoodNightApp/ subdirectory, NOT in the project root
+- Always run xcodebuild commands from the GoodNightApp/ directory or use the -project flag with the full path
+- Before executing xcodebuild commands, verify you are in the correct directory or explicitly cd into GoodNightApp/
+- Example correct usage: `cd GoodNightApp && xcodebuild [options]` or `xcodebuild -project GoodNightApp/GoodNightApp.xcodeproj [options]`

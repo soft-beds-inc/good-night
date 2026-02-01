@@ -1,5 +1,11 @@
 import SwiftUI
 import AppKit
+import Combine
+
+class SkyState: ObservableObject {
+    static let shared = SkyState()
+    @Published var isTextVisible = false
+}
 
 class SkyOverlayWindow: NSWindow {
     static var shared: SkyOverlayWindow?
@@ -10,22 +16,33 @@ class SkyOverlayWindow: NSWindow {
         }
         shared?.alphaValue = 0
         shared?.orderFrontRegardless()
+        SkyState.shared.isTextVisible = false
 
-        // Fade in slowly
+        // Fade in slowly (2 sec)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 2.0
             shared?.animator().alphaValue = 1.0
         }
+
+        // Show text when gradient is 50% faded in (at 1 sec)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            SkyState.shared.isTextVisible = true
+        }
     }
 
     static func hide() {
-        // Fade out slowly instead of instant hide
+        // Start fading out sky (2 sec)
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 2.0
             shared?.animator().alphaValue = 0
         }, completionHandler: {
             shared?.orderOut(nil)
         })
+
+        // Fade out text when gradient is 50% faded out (at 1 sec)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            SkyState.shared.isTextVisible = false
+        }
     }
 
     static func toggle() {
@@ -96,9 +113,9 @@ struct SkyAuraView: View {
                 // Twinkling stars with rays
                 TwinklingStarsView()
 
-                // "it is dreaming" text in the middle
+                // "it is dreaming" text - positioned higher
                 DreamingTextView()
-                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height * 0.30)
             }
         }
         .onAppear {
@@ -110,24 +127,24 @@ struct SkyAuraView: View {
 }
 
 struct DreamingTextView: View {
-    @State private var opacity: Double = 0
+    @ObservedObject var skyState = SkyState.shared
 
     var body: some View {
-        Text("it is dreaming")
-            .font(.system(size: 28, weight: .bold, design: .serif))
-            .italic()
-            .foregroundColor(Color(red: 1.0, green: 0.9, blue: 0.4))  // Yellow
-            .shadow(color: .black, radius: 0, x: -2, y: 0)
-            .shadow(color: .black, radius: 0, x: 2, y: 0)
-            .shadow(color: .black, radius: 0, x: 0, y: -2)
-            .shadow(color: .black, radius: 0, x: 0, y: 2)
-            .shadow(color: .black, radius: 1, x: 0, y: 0)  // Extra for thickness
-            .opacity(opacity)
-            .onAppear {
-                withAnimation(.easeIn(duration: 1.5)) {
-                    opacity = 0.9
-                }
-            }
+        Text("it is dreaming...")
+            .font(.custom("Roboto-Italic", size: 32))
+            .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.2))
+            .transformEffect(CGAffineTransform(a: 1, b: 0, c: -0.04, d: 1, tx: 0, ty: 0))
+            .shadow(color: .black, radius: 0, x: -3, y: 0)
+            .shadow(color: .black, radius: 0, x: 3, y: 0)
+            .shadow(color: .black, radius: 0, x: 0, y: -3)
+            .shadow(color: .black, radius: 0, x: 0, y: 3)
+            .shadow(color: .black, radius: 0, x: -2, y: -2)
+            .shadow(color: .black, radius: 0, x: 2, y: -2)
+            .shadow(color: .black, radius: 0, x: -2, y: 2)
+            .shadow(color: .black, radius: 0, x: 2, y: 2)
+            .shadow(color: .black, radius: 2, x: 0, y: 0)
+            .opacity(skyState.isTextVisible ? 0.9 : 0)
+            .animation(.easeInOut(duration: 1.0), value: skyState.isTextVisible)
     }
 }
 
