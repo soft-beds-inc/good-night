@@ -20,13 +20,25 @@ class Step1Context:
     _conv_index: dict[str, Conversation] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Build conversation index."""
+        """Build conversation index and project index."""
         self._conv_index = {c.session_id: c for c in self.conversations}
+        # Build project index: working_directory -> list of conversations
+        self._project_index: dict[str, list[Conversation]] = {}
+        for c in self.conversations:
+            wd = c.metadata.get("working_directory", "") if c.metadata else ""
+            if wd not in self._project_index:
+                self._project_index[wd] = []
+            self._project_index[wd].append(c)
 
     async def list_conversations(self, limit: int = 50, offset: int = 0) -> str:
         """List available conversations with metadata."""
         result = []
         for conv in self.conversations[offset : offset + limit]:
+            # Get working_directory from metadata
+            working_dir = ""
+            if conv.metadata:
+                working_dir = conv.metadata.get("working_directory", "")
+
             result.append({
                 "id": conv.session_id,
                 "started_at": conv.started_at.isoformat() if conv.started_at else None,
@@ -34,6 +46,7 @@ class Step1Context:
                 "message_count": len(conv.messages),
                 "human_messages": sum(1 for m in conv.messages if m.role.value == "human"),
                 "assistant_messages": sum(1 for m in conv.messages if m.role.value == "assistant"),
+                "working_directory": working_dir,
             })
 
         return json.dumps({
@@ -157,6 +170,84 @@ class Step1Context:
             "truncated": len(results) >= limit,
         }, indent=2)
 
+    async def scan_recent_human_messages(
+        self,
+        working_directory: str | None = None,
+        limit: int = 100,
+    ) -> str:
+        """
+        Fetch recent human messages for quick pattern scanning.
+
+        This is the recommended first step - scan through recent user messages
+        to quickly identify recurring patterns before diving into specific conversations.
+        """
+        # Determine which projects to scan
+        if working_directory:
+            projects = {working_directory: self._project_index.get(working_directory, [])}
+        else:
+            projects = self._project_index
+
+        result: dict[str, list[dict[str, Any]]] = {}
+        total_collected = 0
+
+        for wd, convs in projects.items():
+            if total_collected >= limit:
+                break
+
+            project_messages: list[dict[str, Any]] = []
+
+            # Collect human messages from all conversations in this project
+            # Sort by timestamp (most recent first) across all conversations
+            all_human_msgs: list[tuple[Any, str, int]] = []  # (msg, session_id, index)
+            for conv in convs:
+                for i, msg in enumerate(conv.messages):
+                    if msg.role.value == "human":
+                        all_human_msgs.append((msg, conv.session_id, i))
+
+            # Sort by timestamp descending (most recent first)
+            # Use message index as fallback if no timestamp
+            def sort_key(x: tuple) -> tuple:
+                msg, _session_id, idx = x
+                if msg.timestamp:
+                    # Convert to timestamp float for consistent comparison
+                    return (1, msg.timestamp.timestamp())
+                else:
+                    # No timestamp - use index as secondary sort
+                    return (0, idx)
+
+            all_human_msgs.sort(key=sort_key, reverse=True)
+
+            # Take up to limit messages per project
+            per_project_limit = min(limit - total_collected, limit // max(1, len(projects)))
+            for msg, session_id, msg_idx in all_human_msgs[:per_project_limit]:
+                content = msg.content or ""
+                # Truncate but keep enough for pattern recognition
+                truncated = len(content) > 300
+                if truncated:
+                    content = content[:300] + "..."
+
+                project_messages.append({
+                    "session_id": session_id,
+                    "message_index": msg_idx,
+                    "content": content,
+                    "truncated": truncated,
+                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+                })
+                total_collected += 1
+
+                if total_collected >= limit:
+                    break
+
+            if project_messages:
+                result[wd or "(no project)"] = project_messages
+
+        return json.dumps({
+            "projects": result,
+            "total_messages": total_collected,
+            "total_projects": len(result),
+            "hint": "Scan these messages for recurring patterns. Use get_full_message or get_messages to expand context where you see potential issues.",
+        }, indent=2)
+
     async def report_issue(
         self,
         type: str,
@@ -165,6 +256,7 @@ class Step1Context:
         description: str,
         evidence: list[dict[str, Any]] | None = None,
         suggested_resolution: str | None = None,
+        local_change: bool = False,
     ) -> str:
         """Report an issue found in conversations."""
         try:
@@ -206,6 +298,7 @@ class Step1Context:
             evidence=evidence_list,
             confidence=0.8,
             suggested_resolution=suggested_resolution or "",
+            local_change=local_change,
         )
 
         self.reported_issues.append(issue)
@@ -221,6 +314,22 @@ class Step1Context:
 def create_step1_tools(context: Step1Context) -> list[ToolDefinition]:
     """Create tool definitions for Step 1 analysis."""
     return [
+        ToolBuilder.create(
+            name="scan_recent_human_messages",
+            description="RECOMMENDED FIRST STEP: Fetch last ~100 human messages per project for quick pattern scanning. Use this to quickly identify recurring patterns before diving into specific conversations.",
+            handler=context.scan_recent_human_messages,
+            properties={
+                "working_directory": {
+                    "type": "string",
+                    "description": "Optional: limit to specific project directory. If omitted, scans all projects.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum messages to return across all projects (default: 100)",
+                    "default": 100,
+                },
+            },
+        ),
         ToolBuilder.create(
             name="list_conversations",
             description="List all available conversations with metadata (id, date, message counts). Use pagination for large sets.",
@@ -343,6 +452,11 @@ def create_step1_tools(context: Step1Context) -> list[ToolDefinition]:
                 "suggested_resolution": {
                     "type": "string",
                     "description": "Optional suggestion for how to resolve this issue",
+                },
+                "local_change": {
+                    "type": "boolean",
+                    "description": "True if issue is PROJECT-SPECIFIC (about this project's tech stack, architecture, conventions). False (default) if GLOBAL (general user preferences, workflow, communication style, infrastructure handling). Even issues appearing in one project should be false if they reflect general preferences.",
+                    "default": False,
                 },
             },
             required=["type", "severity", "title", "description"],

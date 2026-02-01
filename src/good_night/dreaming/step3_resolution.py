@@ -45,7 +45,9 @@ documentation below for the specific schema and validation rules.
 
 For each issue, consider:
 - What artifact type is most appropriate for this issue?
-- Should this be global or project-specific?
+- Check the issue's `local_change` field to determine scope:
+  * local_change=true → Project-specific artifact (e.g., project CLAUDE.md, .claude/skills/)
+  * local_change=false → Global artifact (e.g., ~/.claude/skills/, global settings)
 - For recurring issues: should we update an existing artifact instead?
 
 Quality over quantity:
@@ -53,6 +55,7 @@ Quality over quantity:
 - Group related issues into a single resolution when appropriate
 - Include clear rationale for each action
 - Prefer updating existing artifacts for recurring issues
+- Respect local_change: don't create global artifacts for project-specific issues
 """
 
 

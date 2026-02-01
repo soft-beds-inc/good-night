@@ -85,6 +85,7 @@ class Step3Context:
                 "description": issue.description,
                 "status": issue.status,
                 "is_recurring": issue.is_recurring,
+                "local_change": issue.local_change,
                 "suggested_resolution": issue.suggested_resolution,
                 "evidence_count": len(issue.evidence),
                 "conversation_refs": conversation_refs,

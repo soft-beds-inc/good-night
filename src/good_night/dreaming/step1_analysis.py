@@ -43,15 +43,40 @@ ONLY REPORT:
 - Capability gaps that frustrate the user repeatedly over time
 ================================================================================
 
+PROJECT CONTEXT AND LOCAL VS GLOBAL ISSUES:
+================================================================================
+Each conversation has a working_directory that indicates which project it belongs to.
+When reporting issues, you MUST determine if the issue is:
+
+- local_change=true: Issue is PROJECT-SPECIFIC
+  * Related to a specific project's tech stack, architecture, or conventions
+  * Examples: "use pytest not unittest for this project", "follow existing naming pattern X"
+  * Resolution should be applied only to that project (e.g., project CLAUDE.md)
+
+- local_change=false: Issue is GLOBAL (default)
+  * Reflects general user preferences, workflow, or AI behavior patterns
+  * Examples: "always run tests before committing", "confirm before destructive actions",
+    "user prefers concise responses", "check infrastructure/login before starting"
+  * Even if issue only appears in ONE project, it's global if it's about general preferences
+  * Resolution should apply globally (e.g., global skills, ~/.claude settings)
+
+IMPORTANT: The distinction is about the NATURE of the issue, not where it appears.
+An issue that appears in only one project can still be global if it reflects general
+user preferences (how they like to work, communicate, handle infrastructure, etc.).
+Only mark local_change=true for truly project-specific conventions/tech choices.
+================================================================================
+
 You have tools to explore conversations - use them to navigate and search efficiently.
 Report issues ONLY if they span multiple sessions using the report_issue tool.
 
 Your task:
-1. Start by listing conversations to see what's available
-2. Explore messages systematically, looking for CROSS-SESSION patterns
-3. Use search to find recurring issues across different conversations
-4. Only report issues that appear in 2+ different sessions with evidence
-5. Be highly selective - most single-session issues should be ignored
+1. START with scan_recent_human_messages() to quickly see recent user messages across projects
+2. Look for RECURRING patterns in the scan results (similar requests, frustrations, corrections)
+3. Use search_messages() to verify if patterns appear across multiple sessions
+4. Use get_messages() or get_full_message() to get more context where needed
+5. Only report issues that appear in 2+ different sessions with evidence
+6. Set local_change=true ONLY for project-specific issues, false for general preferences
+7. Be highly selective - most single-session issues should be ignored
 
 Issue types to look for (only if they appear across multiple sessions):
 - repeated_request: User asks for the same thing in multiple different sessions
@@ -65,6 +90,7 @@ When reporting issues:
 - MUST include evidence from 2+ different sessions (session_ids and message_indices)
 - Quote relevant text from MULTIPLE sessions to prove the pattern
 - Clearly state how many sessions are affected
+- Set local_change based on whether all evidence is from the same working_directory
 - Prioritize by severity (critical > high > medium > low)
 
 Be highly selective. The threshold for reporting is HIGH - only systematic, recurring issues matter.
@@ -284,27 +310,38 @@ class AnalysisStep:
         total_messages = sum(len(c.messages) for c in conversations)
         human_messages = sum(len(c.human_messages) for c in conversations)
 
+        # Count unique working directories (projects)
+        working_dirs: set[str] = set()
+        for c in conversations:
+            if c.metadata:
+                wd = c.metadata.get("working_directory", "")
+                if wd:
+                    working_dirs.add(wd)
+        num_projects = len(working_dirs)
+
         return f"""Analyze {len(conversations)} conversations for CROSS-CONVERSATION patterns.
 
 Conversation Summary:
 - Total conversations: {len(conversations)}
 - Total messages: {total_messages}
 - Human messages: {human_messages}
+- Unique projects (working directories): {num_projects}
 
 CRITICAL: Only report issues that appear in 2-3+ DIFFERENT sessions.
 Single-session issues are NOT worth reporting - the user does thousands of interactions.
 One-time corrections are NORMAL - ignore them completely.
 
 Your task:
-1. List conversations to see what's available
-2. Look for RECURRING patterns that appear ACROSS different sessions
-3. Use search to find if similar issues occur in multiple conversations
+1. START with scan_recent_human_messages() to quickly see what users are asking
+2. Look for RECURRING patterns in the scan (similar requests, frustrations, corrections)
+3. Use search_messages() to verify patterns appear across multiple sessions
 4. Only report issues with evidence from 2+ different sessions
-5. Be highly selective - most issues should NOT be reported
+5. Set local_change=true ONLY for project-specific tech/conventions, false for general preferences
+6. Be highly selective - most issues should NOT be reported
 
 Focus on: patterns that REPEAT across sessions, not one-time occurrences.
 
-Start by listing the conversations, then look for cross-conversation patterns."""
+START by calling scan_recent_human_messages() to quickly scan recent user messages."""
 
     def _extract_summary(self, response) -> str:
         """Extract a summary from the agent's final response."""

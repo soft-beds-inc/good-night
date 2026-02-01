@@ -25,6 +25,17 @@ class Step2Context:
         """Build issue index."""
         self._issue_index = {i.id: i for i in self.issues}
 
+    def _find_issue(self, issue_id: str) -> EnrichedIssue | None:
+        """Find issue by full or partial ID."""
+        # Try exact match first
+        if issue_id in self._issue_index:
+            return self._issue_index[issue_id]
+        # Try prefix match for truncated IDs
+        for full_id, issue in self._issue_index.items():
+            if full_id.startswith(issue_id):
+                return issue
+        return None
+
     def _load_resolutions(self) -> list[Resolution]:
         """Lazy load historical resolutions."""
         if self._resolutions is None:
@@ -116,7 +127,7 @@ class Step2Context:
         relevance_score: float = 0.8,
     ) -> str:
         """Link a current issue to a past resolution."""
-        issue = self._issue_index.get(issue_id)
+        issue = self._find_issue(issue_id)
         if not issue:
             return json.dumps({"error": f"Issue {issue_id} not found"})
 
@@ -147,7 +158,7 @@ class Step2Context:
         status: str,
     ) -> str:
         """Mark an issue as new, recurring, or already_resolved."""
-        issue = self._issue_index.get(issue_id)
+        issue = self._find_issue(issue_id)
         if not issue:
             return json.dumps({"error": f"Issue {issue_id} not found"})
 
@@ -169,7 +180,7 @@ class Step2Context:
         issue_id: str,
     ) -> str:
         """Find potential matches between an issue and historical resolutions."""
-        issue = self._issue_index.get(issue_id)
+        issue = self._find_issue(issue_id)
         if not issue:
             return json.dumps({"error": f"Issue {issue_id} not found"})
 

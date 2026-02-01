@@ -64,6 +64,7 @@ class Issue:
     confidence: float = 0.5
     suggested_resolution: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    local_change: bool = False  # True if issue is project-specific, False if global
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -76,6 +77,7 @@ class Issue:
             "confidence": self.confidence,
             "suggested_resolution": self.suggested_resolution,
             "metadata": self.metadata,
+            "local_change": self.local_change,
         }
 
     @classmethod
@@ -102,6 +104,7 @@ class Issue:
             confidence=data.get("confidence", 0.5),
             suggested_resolution=data.get("suggested_resolution", ""),
             metadata=data.get("metadata", {}),
+            local_change=data.get("local_change", False),
         )
 
 
@@ -173,6 +176,7 @@ class EnrichedIssue(Issue):
             confidence=issue.confidence,
             suggested_resolution=issue.suggested_resolution,
             metadata=issue.metadata,
+            local_change=issue.local_change,
         )
 
 
