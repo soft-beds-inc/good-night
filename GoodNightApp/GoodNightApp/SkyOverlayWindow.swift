@@ -5,9 +5,7 @@ class SkyOverlayWindow: NSWindow {
     static var shared: SkyOverlayWindow?
 
     static func show() {
-        print("[SkyOverlay] show() called")
         if shared == nil {
-            print("[SkyOverlay] Creating new window")
             shared = SkyOverlayWindow()
         }
         shared?.alphaValue = 0
@@ -18,16 +16,16 @@ class SkyOverlayWindow: NSWindow {
             context.duration = 2.0
             shared?.animator().alphaValue = 1.0
         }
-        print("[SkyOverlay] show() completed, starting fade in")
     }
 
     static func hide() {
-        print("[SkyOverlay] hide() called")
-        // Print stack trace to see who called hide()
-        Thread.callStackSymbols.prefix(10).forEach { print($0) }
-        // Immediately disappear
-        shared?.alphaValue = 0
-        shared?.orderOut(nil)
+        // Fade out slowly instead of instant hide
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 2.0
+            shared?.animator().alphaValue = 0
+        }, completionHandler: {
+            shared?.orderOut(nil)
+        })
     }
 
     static func toggle() {
@@ -95,8 +93,12 @@ struct SkyAuraView: View {
                 AuroraWave(phase: phase + 0.3, color: Color.blue.opacity(0.12))
                 AuroraWave(phase: phase + 0.6, color: Color.cyan.opacity(0.08))
 
-                // Twinkling stars
+                // Twinkling stars with rays
                 TwinklingStarsView()
+
+                // "it is dreaming" text in the middle
+                DreamingTextView()
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
         }
         .onAppear {
@@ -104,6 +106,28 @@ struct SkyAuraView: View {
                 phase = 1
             }
         }
+    }
+}
+
+struct DreamingTextView: View {
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        Text("it is dreaming")
+            .font(.system(size: 28, weight: .bold, design: .serif))
+            .italic()
+            .foregroundColor(Color(red: 1.0, green: 0.9, blue: 0.4))  // Yellow
+            .shadow(color: .black, radius: 0, x: -2, y: 0)
+            .shadow(color: .black, radius: 0, x: 2, y: 0)
+            .shadow(color: .black, radius: 0, x: 0, y: -2)
+            .shadow(color: .black, radius: 0, x: 0, y: 2)
+            .shadow(color: .black, radius: 1, x: 0, y: 0)  // Extra for thickness
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(.easeIn(duration: 1.5)) {
+                    opacity = 0.9
+                }
+            }
     }
 }
 
@@ -161,11 +185,12 @@ struct TwinklingStarsView: View {
             stars.append(StarData(
                 x: CGFloat.random(in: 0...size.width),
                 y: CGFloat.random(in: 0...size.height * 0.8),
-                size: CGFloat.random(in: 0.5...1.2),
+                size: CGFloat.random(in: 0.8...1.5),
                 maxOpacity: Double.random(in: 0.3...0.6),
                 twinkleDuration: Double.random(in: 3...8),
                 fadeInOut: true,
-                delay: Double.random(in: 0...5)
+                delay: Double.random(in: 0...5),
+                isYellow: Double.random(in: 0...1) < 0.15  // 15% chance of yellow
             ))
         }
 
@@ -174,24 +199,26 @@ struct TwinklingStarsView: View {
             stars.append(StarData(
                 x: CGFloat.random(in: 0...size.width),
                 y: CGFloat.random(in: 0...size.height * 0.75),
-                size: CGFloat.random(in: 1.2...2.5),
+                size: CGFloat.random(in: 1.5...3.0),
                 maxOpacity: Double.random(in: 0.5...0.85),
                 twinkleDuration: Double.random(in: 2...5),
                 fadeInOut: Bool.random(),
-                delay: Double.random(in: 0...4)
+                delay: Double.random(in: 0...4),
+                isYellow: Double.random(in: 0...1) < 0.2  // 20% chance of yellow
             ))
         }
 
         // Layer 3: Bright prominent stars (fewer)
-        for _ in 0..<20 {
+        for _ in 0..<25 {
             stars.append(StarData(
                 x: CGFloat.random(in: 0...size.width),
                 y: CGFloat.random(in: 0...size.height * 0.6),
-                size: CGFloat.random(in: 2.5...4.0),
+                size: CGFloat.random(in: 3.0...5.0),
                 maxOpacity: Double.random(in: 0.7...1.0),
                 twinkleDuration: Double.random(in: 1.5...4),
                 fadeInOut: false,
-                delay: Double.random(in: 0...2)
+                delay: Double.random(in: 0...2),
+                isYellow: Double.random(in: 0...1) < 0.25  // 25% chance of yellow
             ))
         }
 
@@ -206,35 +233,51 @@ struct StarData: Identifiable {
     let size: CGFloat
     let maxOpacity: Double
     let twinkleDuration: Double
-    let fadeInOut: Bool  // true = can disappear completely, false = just dims
+    let fadeInOut: Bool
     let delay: Double
+    let isYellow: Bool
 }
 
 struct TwinklingStar: View {
     let star: StarData
 
     @State private var opacity: Double = 0
-    @State private var isVisible: Bool = true
+
+    var starColor: Color {
+        if star.isYellow {
+            return Color(red: 1.0, green: 0.95, blue: 0.7)  // Soft warm yellow
+        } else {
+            return Color.white
+        }
+    }
 
     var body: some View {
-        Circle()
-            .fill(Color.white)
-            .frame(width: star.size, height: star.size)
-            .blur(radius: star.size > 2.5 ? 0.5 : 0)  // Slight glow for bright stars
-            .opacity(opacity)
-            .position(x: star.x, y: star.y)
-            .onAppear {
-                startTwinkling()
+        ZStack {
+            // Main star body with rays
+            StarShape(points: 8, innerRatio: 0.4)
+                .fill(starColor)
+                .frame(width: star.size * 2, height: star.size * 2)
+
+            // Glow effect for larger stars
+            if star.size > 2 {
+                Circle()
+                    .fill(starColor.opacity(0.3))
+                    .frame(width: star.size * 1.5, height: star.size * 1.5)
+                    .blur(radius: star.size * 0.5)
             }
+        }
+        .opacity(opacity)
+        .position(x: star.x, y: star.y)
+        .onAppear {
+            startTwinkling()
+        }
     }
 
     private func startTwinkling() {
         DispatchQueue.main.asyncAfter(deadline: .now() + star.delay) {
             if star.fadeInOut {
-                // Stars that appear and disappear
                 fadeInOutCycle()
             } else {
-                // Stars that just twinkle (dim and brighten)
                 withAnimation(.easeInOut(duration: star.twinkleDuration).repeatForever(autoreverses: true)) {
                     opacity = star.maxOpacity
                 }
@@ -243,21 +286,52 @@ struct TwinklingStar: View {
     }
 
     private func fadeInOutCycle() {
-        // Fade in
         withAnimation(.easeIn(duration: star.twinkleDuration * 0.4)) {
             opacity = star.maxOpacity
         }
 
-        // Schedule fade out
         DispatchQueue.main.asyncAfter(deadline: .now() + star.twinkleDuration * Double.random(in: 0.5...1.5)) {
             withAnimation(.easeOut(duration: star.twinkleDuration * 0.6)) {
                 opacity = 0
             }
 
-            // Schedule next appearance
             DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 1...6)) {
                 fadeInOutCycle()
             }
         }
+    }
+}
+
+// 4-pointed star shape with rays
+struct StarShape: Shape {
+    let points: Int
+    let innerRatio: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.width / 2, y: rect.height / 2)
+        let outerRadius = min(rect.width, rect.height) / 2
+        let innerRadius = outerRadius * innerRatio
+
+        var path = Path()
+        let angleStep = .pi / CGFloat(points)
+
+        for i in 0..<(points * 2) {
+            let radius = i.isMultiple(of: 2) ? outerRadius : innerRadius
+            let angle = CGFloat(i) * angleStep - .pi / 2
+
+            let point = CGPoint(
+                x: center.x + radius * cos(angle),
+                y: center.y + radius * sin(angle)
+            )
+
+            if i == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        path.closeSubpath()
+        return path
     }
 }

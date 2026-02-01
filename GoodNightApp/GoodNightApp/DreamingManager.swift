@@ -1,6 +1,9 @@
 import Foundation
 import UserNotifications
 import AVFoundation
+import os.log
+
+private let logger = Logger(subsystem: "com.goodnight.app", category: "dreaming")
 
 class DreamingManager: ObservableObject {
     static let shared = DreamingManager()
@@ -370,6 +373,8 @@ class DreamingManager: ObservableObject {
     }
 
     private func sendCompletionNotification() {
+        logger.info("sendCompletionNotification called")
+
         let dreamSubjects = [
             "rabbits", "trees", "clouds", "mountains", "rivers",
             "stars", "butterflies", "rainbows", "meadows", "forests",
@@ -380,10 +385,33 @@ class DreamingManager: ObservableObject {
         ]
 
         let randomSubject = dreamSubjects.randomElement() ?? "stars"
+        logger.info("Random subject: \(randomSubject)")
+
+        // Check permission first
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            logger.info("Authorization status: \(settings.authorizationStatus.rawValue)")
+
+            guard settings.authorizationStatus == .authorized else {
+                logger.warning("Not authorized, requesting permission...")
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    logger.info("Permission granted: \(granted), error: \(String(describing: error))")
+                    if granted {
+                        self.postNotification(subject: randomSubject)
+                    }
+                }
+                return
+            }
+
+            self.postNotification(subject: randomSubject)
+        }
+    }
+
+    private func postNotification(subject: String) {
+        logger.info("Posting notification with subject: \(subject)")
 
         let content = UNMutableNotificationContent()
         content.title = "Good Night"
-        content.body = "I was dreaming about \(randomSubject)"
+        content.body = "I was dreaming about \(subject)"
 
         // Set up custom sound
         setupNotificationSound()
@@ -395,7 +423,13 @@ class DreamingManager: ObservableObject {
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                logger.error("ERROR posting notification: \(error.localizedDescription)")
+            } else {
+                logger.info("Notification posted successfully")
+            }
+        }
     }
 
     private func setupNotificationSound() {
