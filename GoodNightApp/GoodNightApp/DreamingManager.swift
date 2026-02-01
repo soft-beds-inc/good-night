@@ -670,4 +670,60 @@ struct Resolution: Identifiable {
         default: return type.capitalized
         }
     }
+
+    /// Generate the markdown content that would be written to file
+    var markdownContent: String {
+        switch type {
+        case "skill":
+            return formatAsSkill()
+        case "claude-md":
+            return formatAsClaudeMd()
+        default:
+            return "# \(name)\n\n\(description)"
+        }
+    }
+
+    private func formatAsSkill() -> String {
+        let skillName = content["name"] as? String ?? name
+        let skillDesc = content["description"] as? String ?? ""
+        let instructions = content["instructions"] as? String ?? ""
+        let whenToUse = content["when_to_use"] as? String
+
+        var result = "# \(skillName)\n\n"
+        if !skillDesc.isEmpty {
+            result += "\(skillDesc)\n\n"
+        }
+        if let whenToUse = whenToUse, !whenToUse.isEmpty {
+            result += "## When to Use\n\(whenToUse)\n\n"
+        }
+        if !instructions.isEmpty {
+            if instructions.contains("## ") || instructions.contains("# ") {
+                result += instructions
+            } else {
+                result += "## Instructions\n\(instructions)"
+            }
+        }
+        return result
+    }
+
+    private func formatAsClaudeMd() -> String {
+        guard let preferences = content["preferences"] as? [[String: Any]] else {
+            // Fallback: show raw content description
+            return "# \(name)\n\n\(description)"
+        }
+
+        var result = "# \(name)\n"
+
+        for pref in preferences {
+            if let section = pref["section"] as? String,
+               let items = pref["items"] as? [String] {
+                result += "\n## \(section)\n"
+                for item in items {
+                    result += "- \(item)\n"
+                }
+            }
+        }
+
+        return result
+    }
 }

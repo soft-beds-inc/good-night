@@ -215,116 +215,131 @@ struct ResolutionCard: View {
     @ObservedObject var dreamingManager = DreamingManager.shared
     @State private var selectedDirectories: Set<String> = []
     @State private var isExpanded = false
+    @State private var showingPreview = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(resolution.name)
-                        .font(.headline)
-                        .lineLimit(1)
+            // Clickable content area (expands/collapses on tap)
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(resolution.name)
+                            .font(.headline)
+                            .lineLimit(1)
 
-                    HStack(spacing: 8) {
-                        Label(resolution.displayType, systemImage: typeIcon)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        HStack(spacing: 8) {
+                            Label(resolution.displayType, systemImage: typeIcon)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
 
-                        if resolution.isLocalChange {
-                            Text("Local")
+                            if resolution.isLocalChange {
+                                Text("Local")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.2))
+                                    .foregroundColor(.orange)
+                                    .cornerRadius(4)
+                            } else {
+                                Text("Global")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.2))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(4)
+                            }
+
+                            Text(resolution.operation.capitalized)
                                 .font(.caption2)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.2))
-                                .foregroundColor(.orange)
-                                .cornerRadius(4)
-                        } else {
-                            Text("Global")
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.2))
-                                .foregroundColor(.blue)
+                                .background(Color.gray.opacity(0.2))
+                                .foregroundColor(.secondary)
                                 .cornerRadius(4)
                         }
-
-                        Text(resolution.operation.capitalized)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.gray.opacity(0.2))
-                            .foregroundColor(.secondary)
-                            .cornerRadius(4)
                     }
-                }
 
-                Spacer()
+                    Spacer()
 
-                Button(action: { isExpanded.toggle() }) {
+                    Button(action: { showingPreview = true }) {
+                        Image(systemName: "doc.text")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
+                        .font(.caption)
+                        .padding(.leading, 4)
 
-                Button(action: { dreamingManager.dismissResolution(resolution) }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 8)
-            }
-
-            // Content preview
-            Text(resolution.description.isEmpty ? "No description" : resolution.description)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .lineLimit(isExpanded ? nil : 2)
-
-            if isExpanded {
-                // Rationale
-                if !resolution.rationale.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Rationale")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-
-                        Text(resolution.rationale)
-                            .font(.caption)
+                    Button(action: { dreamingManager.dismissResolution(resolution) }) {
+                        Image(systemName: "xmark")
                             .foregroundColor(.secondary)
                     }
-                    .padding(.top, 4)
+                    .buttonStyle(.plain)
+                    .padding(.leading, 8)
                 }
 
-                // Directories selection
-                if !resolution.directories.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Apply to directories:")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
+                // Content preview
+                Text(resolution.description.isEmpty ? "No description" : resolution.description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(isExpanded ? nil : 2)
 
-                        ForEach(resolution.directories, id: \.self) { dir in
-                            DirectoryButton(
-                                directory: dir,
-                                isSelected: selectedDirectories.contains(dir),
-                                onToggle: {
-                                    if selectedDirectories.contains(dir) {
-                                        selectedDirectories.remove(dir)
-                                    } else {
-                                        selectedDirectories.insert(dir)
-                                    }
-                                }
-                            )
+                if isExpanded {
+                    // Rationale
+                    if !resolution.rationale.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Rationale")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+
+                            Text(resolution.rationale)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
+                        .padding(.top, 4)
                     }
-                    .padding(.top, 4)
+
+                    // Directories selection
+                    if !resolution.directories.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Apply to directories:")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+
+                            ForEach(resolution.directories, id: \.self) { dir in
+                                DirectoryButton(
+                                    directory: dir,
+                                    isSelected: selectedDirectories.contains(dir),
+                                    onToggle: {
+                                        if selectedDirectories.contains(dir) {
+                                            selectedDirectories.remove(dir)
+                                        } else {
+                                            selectedDirectories.insert(dir)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
                 }
             }
 
             Divider()
 
-            // Action buttons
+            // Action buttons (not part of tap area)
             HStack {
                 if !resolution.directories.isEmpty && !selectedDirectories.isEmpty {
                     Button("Apply to Selected") {
@@ -345,6 +360,9 @@ struct ResolutionCard: View {
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .sheet(isPresented: $showingPreview) {
+            MarkdownPreviewSheet(resolution: resolution)
+        }
     }
 
     private var typeIcon: String {
@@ -390,6 +408,117 @@ struct DirectoryButton: View {
         }
         return path
     }
+}
+
+struct MarkdownPreviewSheet: View {
+    let resolution: Resolution
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(resolution.name)
+                        .font(.headline)
+                    Text(resolution.displayType)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding()
+
+            Divider()
+
+            // Rendered markdown content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(parseMarkdownLines(resolution.markdownContent), id: \.id) { line in
+                        line.view
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+        }
+        .frame(width: 500, height: 400)
+    }
+
+    private func parseMarkdownLines(_ markdown: String) -> [MarkdownLine] {
+        let lines = markdown.components(separatedBy: "\n")
+        var result: [MarkdownLine] = []
+
+        for (index, line) in lines.enumerated() {
+            if line.hasPrefix("# ") {
+                let text = String(line.dropFirst(2))
+                result.append(MarkdownLine(id: index, view: AnyView(
+                    Text(text)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .padding(.bottom, 4)
+                )))
+            } else if line.hasPrefix("## ") {
+                let text = String(line.dropFirst(3))
+                result.append(MarkdownLine(id: index, view: AnyView(
+                    Text(text)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .padding(.top, 8)
+                        .padding(.bottom, 2)
+                )))
+            } else if line.hasPrefix("### ") {
+                let text = String(line.dropFirst(4))
+                result.append(MarkdownLine(id: index, view: AnyView(
+                    Text(text)
+                        .font(.title3)
+                        .fontWeight(.medium)
+                        .padding(.top, 4)
+                )))
+            } else if line.hasPrefix("- ") {
+                let text = String(line.dropFirst(2))
+                result.append(MarkdownLine(id: index, view: AnyView(
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Text(renderInlineMarkdown(text))
+                            .textSelection(.enabled)
+                    }
+                    .padding(.leading, 8)
+                )))
+            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                result.append(MarkdownLine(id: index, view: AnyView(
+                    Spacer().frame(height: 8)
+                )))
+            } else {
+                result.append(MarkdownLine(id: index, view: AnyView(
+                    Text(renderInlineMarkdown(line))
+                        .textSelection(.enabled)
+                )))
+            }
+        }
+
+        return result
+    }
+
+    private func renderInlineMarkdown(_ text: String) -> AttributedString {
+        // Try to parse as attributed string with markdown
+        if let attributed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return attributed
+        }
+        return AttributedString(text)
+    }
+}
+
+struct MarkdownLine: Identifiable {
+    let id: Int
+    let view: AnyView
 }
 
 #Preview {
