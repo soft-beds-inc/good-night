@@ -92,6 +92,7 @@ class DreamingResult:
 
     success: bool = True
     error: str | None = None
+    no_new_conversations: bool = False  # True when there were no new conversations to analyze
     run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     conversations_analyzed: int = 0
     issues_found: int = 0
@@ -285,7 +286,7 @@ class DreamingOrchestrator:
                         stats.cache_read_tokens += s3.get("cache_read_tokens", 0)
                         stats.cache_write_tokens += s3.get("cache_write_tokens", 0)
 
-                # Update connector state
+                # Update connector state (even if no issues found, we still processed the conversations)
                 if conversations and not self.dry_run:
                     # Normalize timestamps to avoid comparing naive and aware datetimes
                     def normalize_ts(ts: datetime | None) -> datetime | None:
@@ -309,6 +310,22 @@ class DreamingOrchestrator:
                         last_processed=latest_ts,
                         conversations_processed=len(conversations),
                     )
+
+            # Check if no new conversations were found
+            if total_conversations == 0:
+                result.no_new_conversations = True
+                result.duration_seconds = (datetime.now() - start_time).total_seconds()
+
+                self.event_stream.emit(AgentEvent(
+                    timestamp=datetime.now(),
+                    agent_id="orchestrator",
+                    agent_type="orchestrator",
+                    event_type="complete",
+                    summary="No new conversations to analyze",
+                ))
+
+                logger.info("No new conversations to analyze")
+                return result
 
             # Update dreaming state
             if not self.dry_run:

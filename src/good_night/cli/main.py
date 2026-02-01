@@ -332,6 +332,11 @@ def dream(
             console.print()  # Add space after events
 
         if result.success:
+            if result.no_new_conversations:
+                console.print(f"[yellow]No new conversations to analyze.[/yellow]")
+                console.print(f"  Duration: {result.duration_seconds:.1f}s")
+                return
+
             console.print(f"[green]Dreaming cycle completed![/green]")
             console.print(f"  Conversations analyzed: {result.conversations_analyzed}")
             console.print(f"  Issues found: {result.issues_found}")

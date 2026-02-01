@@ -15,6 +15,8 @@ struct ContentView: View {
                 DreamingView()
             } else if dreamingManager.isFirstRun {
                 FirstRunView()
+            } else if dreamingManager.noNewConversations {
+                NoNewConversationsView()
             } else if !dreamingManager.resolutions.isEmpty {
                 ResolutionsView()
             } else {
@@ -159,6 +161,34 @@ struct EmptyStateView: View {
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
             }
+        }
+        .padding(30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct NoNewConversationsView: View {
+    @ObservedObject var dreamingManager = DreamingManager.shared
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 48))
+                .foregroundColor(.green)
+
+            Text("All Caught Up")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("No new conversations since last dream.\nCome back after more coding sessions!")
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+
+            Button("Dream Again") {
+                dreamingManager.noNewConversations = false
+                dreamingManager.startDreaming()
+            }
+            .buttonStyle(.bordered)
         }
         .padding(30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

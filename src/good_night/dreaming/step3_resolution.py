@@ -4,22 +4,16 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from ..artifacts.factory import ArtifactHandlerFactory
 from ..config import Config
 from ..linter.validator import ResolutionValidator
-from ..observability import (
-    LocalVsGlobalJudge,
-    PIISecretDetector,
-    ResolutionApplicabilityJudge,
-    ResolutionSignificanceJudge,
-)
+from ..observability import run_resolution_evaluation
 from ..providers.base import AgentProvider
 from ..providers.types import AgentConfig
-from ..storage.resolutions import Resolution, ResolutionAction, ResolutionStorage
+from ..storage.resolutions import Resolution, ResolutionStorage
 from .events import AgentEvent, AgentEventStream
-from .report import EnrichedIssue, EnrichedReport
+from .report import EnrichedReport
 from .tools.base import wrap_tool_with_events
 from .tools.step3_tools import Step3Context, create_step3_tools
 
@@ -174,13 +168,13 @@ class ResolutionStep:
                 # Add token usage to metadata
                 resolution.metadata["token_usage"] = step3_usage.to_dict()
 
-                # Evaluate resolutions using LLM judges before saving
+                # Run Weave evaluation on resolutions
                 try:
-                    evaluations = await self._evaluate_all_resolutions(resolution, report)
-                    resolution.metadata["evaluations"] = evaluations
-                    logger.info(f"Completed LLM judge evaluations for {len(evaluations)} actions")
+                    eval_results = await run_resolution_evaluation(resolution, report)
+                    resolution.metadata["evaluations"] = eval_results
+                    logger.info(f"Weave evaluation complete for {len(eval_results)} actions")
                 except Exception as e:
-                    logger.error(f"Failed to evaluate resolutions: {e}")
+                    logger.error(f"Failed to run Weave evaluation: {e}")
                     resolution.metadata["evaluations"] = {"error": str(e)}
 
                 # Emit completion event
@@ -277,164 +271,6 @@ Steps:
 
 Consider grouping related issues if they can be addressed by a single artifact.
 """
-
-    async def _evaluate_resolution(
-        self,
-        action: ResolutionAction,
-        issues: list[EnrichedIssue],
-    ) -> dict[str, Any]:
-        """Evaluate a resolution action using LLM judges.
-
-        Args:
-            action: The resolution action to evaluate
-            issues: The issues this action addresses
-
-        Returns:
-            Dictionary with evaluation results from all judges
-        """
-        evaluation: dict[str, Any] = {}
-
-        # Prepare content for evaluation
-        content_str = json.dumps(action.content) if action.content else ""
-        issue_descriptions = "\n".join(i.description for i in issues)
-        issue_titles = ", ".join(i.title for i in issues)
-
-        # 1. Check for PII/secrets
-        try:
-            pii_detector = PIISecretDetector()
-            pii_result = pii_detector.score(content=content_str)
-            evaluation["pii"] = pii_result
-
-            if pii_result.get("has_pii") and pii_result.get("severity") == "high":
-                logger.warning(
-                    f"Resolution {action.target} may contain secrets: "
-                    f"{pii_result.get('pii_types', [])} - {pii_result.get('explanation', '')}"
-                )
-        except Exception as e:
-            logger.error(f"PII detection failed for {action.target}: {e}")
-            evaluation["pii"] = {"error": str(e)}
-
-        # 2. Score significance
-        try:
-            sig_judge = ResolutionSignificanceJudge()
-            sig_result = sig_judge.score(
-                resolution_description=action.rationale,
-                issue_description=issue_descriptions,
-            )
-            evaluation["significance"] = sig_result
-
-            if not sig_result.get("is_significant", True):
-                logger.info(
-                    f"Resolution {action.target} has low significance "
-                    f"(score={sig_result.get('significance_score', 0):.2f}): "
-                    f"{sig_result.get('rationale', '')}"
-                )
-        except Exception as e:
-            logger.error(f"Significance scoring failed for {action.target}: {e}")
-            evaluation["significance"] = {"error": str(e)}
-
-        # 3. Verify applicability
-        try:
-            app_judge = ResolutionApplicabilityJudge()
-            app_result = app_judge.score(
-                issue_title=issue_titles,
-                issue_description=issue_descriptions,
-                resolution_content=action.content,
-                resolution_type=action.type,
-            )
-            evaluation["applicability"] = app_result
-
-            if not app_result.get("is_applicable", True):
-                logger.warning(
-                    f"Resolution {action.target} may not fully address issues "
-                    f"(coverage={app_result.get('coverage_score', 0):.2f}): "
-                    f"gaps={app_result.get('gaps', [])}"
-                )
-        except Exception as e:
-            logger.error(f"Applicability check failed for {action.target}: {e}")
-            evaluation["applicability"] = {"error": str(e)}
-
-        # 4. Validate local_change flag
-        try:
-            local_judge = LocalVsGlobalJudge()
-            # Get working directory from first issue with evidence
-            working_dir = ""
-            for issue in issues:
-                if issue.evidence:
-                    working_dir = issue.evidence[0].working_directory
-                    if working_dir:
-                        break
-
-            local_result = local_judge.score(
-                issue_description=issue_descriptions,
-                resolution_description=action.rationale,
-                working_directory=working_dir,
-            )
-            evaluation["local_vs_global"] = local_result
-
-            # Check if local_change flag matches judge recommendation
-            expected_local = local_result.get("should_be_local", False)
-            if action.local_change != expected_local and local_result.get("confidence", 0) > 0.7:
-                logger.warning(
-                    f"Resolution {action.target} local_change={action.local_change} "
-                    f"but judge recommends should_be_local={expected_local} "
-                    f"(confidence={local_result.get('confidence', 0):.2f}): "
-                    f"{local_result.get('rationale', '')}"
-                )
-        except Exception as e:
-            logger.error(f"Local vs global check failed for {action.target}: {e}")
-            evaluation["local_vs_global"] = {"error": str(e)}
-
-        return evaluation
-
-    async def _evaluate_all_resolutions(
-        self,
-        resolution: Resolution,
-        report: EnrichedReport,
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Evaluate all resolution actions using LLM judges.
-
-        Args:
-            resolution: The Resolution object containing all actions
-            report: The EnrichedReport with issues
-
-        Returns:
-            Dictionary mapping action targets to their evaluation results
-        """
-        evaluations: dict[str, list[dict[str, Any]]] = {}
-
-        # Build a map of issue_id to EnrichedIssue for quick lookup
-        issues_to_resolve = report.new_issues + report.recurring_issues
-        issue_map = {issue.id: issue for issue in issues_to_resolve}
-
-        for conn_res in resolution.resolutions:
-            for action in conn_res.actions:
-                # Get the issues this action addresses
-                addressed_issues = [
-                    issue_map[ref]
-                    for ref in action.issue_refs
-                    if ref in issue_map
-                ]
-
-                if not addressed_issues:
-                    logger.warning(
-                        f"Resolution {action.target} has no matching issues "
-                        f"(refs: {action.issue_refs})"
-                    )
-                    continue
-
-                # Evaluate this action
-                eval_result = await self._evaluate_resolution(action, addressed_issues)
-                evaluations[action.target] = [eval_result]
-
-                logger.info(
-                    f"Evaluated resolution {action.target}: "
-                    f"pii={eval_result.get('pii', {}).get('has_pii', False)}, "
-                    f"significance={eval_result.get('significance', {}).get('significance_score', 'N/A')}, "
-                    f"applicability={eval_result.get('applicability', {}).get('coverage_score', 'N/A')}"
-                )
-
-        return evaluations
 
     def _save_resolution(self, resolution: Resolution, dry_run: bool) -> Path:
         """Save resolution JSON to appropriate location."""

@@ -13,6 +13,7 @@ class DreamingManager: ObservableObject {
     @Published var dreamError: String?
     @Published var isFirstRun = false
     @Published var daysToLookback: Int = 14
+    @Published var noNewConversations = false
 
     private var audioPlayer: AVAudioPlayer?
     private var process: Process?
@@ -64,6 +65,7 @@ class DreamingManager: ObservableObject {
 
         isDreaming = true
         dreamError = nil
+        noNewConversations = false
 
         // Show sky overlay
         DispatchQueue.main.async {
@@ -142,8 +144,14 @@ class DreamingManager: ObservableObject {
 
             if result.0 == 0 {
                 isFirstRun = false
-                loadResolutions()
-                sendCompletionNotification()
+
+                // Check if no new conversations
+                if result.1.contains("No new conversations") {
+                    noNewConversations = true
+                } else {
+                    loadResolutions()
+                    sendCompletionNotification()
+                }
             } else {
                 dreamError = "Command: \(commandString)\n\nExit code: \(result.0)\n\nOutput:\n\(result.1)"
             }
@@ -282,6 +290,12 @@ class DreamingManager: ObservableObject {
             }
 
             for action in actions {
+                // Skip already applied or rejected actions
+                let status = action["status"] as? String ?? "pending"
+                if status == "applied" || status == "rejected" {
+                    continue
+                }
+
                 let resolution = Resolution(
                     id: UUID().uuidString,
                     name: action["name"] as? String ?? action["target"] as? String ?? "Unknown",
@@ -339,24 +353,204 @@ class DreamingManager: ObservableObject {
     }
 
     func applyResolution(_ resolution: Resolution, toDirectories directories: [String]) {
-        // Placeholder for now
         print("Applying resolution '\(resolution.name)' to directories: \(directories)")
+
+        for directory in directories {
+            applyToDirectory(resolution: resolution, directory: directory)
+        }
+
+        // Mark as applied in JSON
+        markResolutionStatus(resolution, status: "applied")
 
         // Remove from list
         resolutions.removeAll { $0.id == resolution.id }
     }
 
     func applyResolutionGlobally(_ resolution: Resolution) {
-        // Placeholder for now
         print("Applying resolution '\(resolution.name)' globally")
+
+        if resolution.type == "claude-skills" || resolution.type == "skill" {
+            applySkillGlobally(resolution: resolution)
+        } else if resolution.type == "claude-md" {
+            applyClaudeMdGlobally(resolution: resolution)
+        }
+
+        // Mark as applied in JSON
+        markResolutionStatus(resolution, status: "applied")
 
         // Remove from list
         resolutions.removeAll { $0.id == resolution.id }
     }
 
     func dismissResolution(_ resolution: Resolution) {
-        // Remove from UI list (doesn't delete the file)
+        // Mark as rejected in JSON so it doesn't reappear
+        markResolutionStatus(resolution, status: "rejected")
+
+        // Remove from UI list
         resolutions.removeAll { $0.id == resolution.id }
+    }
+
+    // MARK: - Apply Implementation
+
+    private func applyToDirectory(resolution: Resolution, directory: String) {
+        if resolution.type == "claude-skills" || resolution.type == "skill" {
+            applySkillToDirectory(resolution: resolution, directory: directory)
+        } else if resolution.type == "claude-md" {
+            applyClaudeMdToDirectory(resolution: resolution, directory: directory)
+        }
+    }
+
+    private func applySkillGlobally(resolution: Resolution) {
+        let skillName = (resolution.content["name"] as? String ?? resolution.name)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+
+        let skillDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/skills/\(skillName)")
+
+        try? FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
+
+        let skillFile = skillDir.appendingPathComponent("SKILL.md")
+        let content = formatSkillContent(resolution: resolution)
+
+        try? content.write(to: skillFile, atomically: true, encoding: .utf8)
+        print("Created skill: \(skillFile.path)")
+    }
+
+    private func applySkillToDirectory(resolution: Resolution, directory: String) {
+        let skillName = (resolution.content["name"] as? String ?? resolution.name)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+
+        let projectDir = URL(fileURLWithPath: directory)
+        let skillDir = projectDir.appendingPathComponent(".claude/skills/\(skillName)")
+
+        try? FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
+
+        let skillFile = skillDir.appendingPathComponent("SKILL.md")
+        let content = formatSkillContent(resolution: resolution)
+
+        try? content.write(to: skillFile, atomically: true, encoding: .utf8)
+        print("Created skill: \(skillFile.path)")
+    }
+
+    private func applyClaudeMdGlobally(resolution: Resolution) {
+        let claudeMdFile = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/CLAUDE.md")
+
+        // Create .claude directory if needed
+        let claudeDir = claudeMdFile.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+
+        let newContent = formatClaudeMdContent(resolution: resolution)
+        appendToFile(at: claudeMdFile, content: newContent)
+        print("Appended to: \(claudeMdFile.path)")
+    }
+
+    private func applyClaudeMdToDirectory(resolution: Resolution, directory: String) {
+        let projectDir = URL(fileURLWithPath: directory)
+        let claudeMdFile = projectDir.appendingPathComponent("CLAUDE.md")
+
+        let newContent = formatClaudeMdContent(resolution: resolution)
+        appendToFile(at: claudeMdFile, content: newContent)
+        print("Appended to: \(claudeMdFile.path)")
+    }
+
+    private func formatSkillContent(resolution: Resolution) -> String {
+        let name = resolution.content["name"] as? String ?? resolution.name
+        let description = resolution.content["description"] as? String ?? ""
+        let instructions = resolution.content["instructions"] as? String ?? ""
+        let whenToUse = resolution.content["when_to_use"] as? String
+
+        var content = "# \(name)\n\n"
+        if !description.isEmpty {
+            content += "\(description)\n\n"
+        }
+        if let whenToUse = whenToUse, !whenToUse.isEmpty {
+            content += "## When to Use\n\(whenToUse)\n\n"
+        }
+        if !instructions.isEmpty {
+            // If instructions already has markdown headers, use as-is
+            if instructions.contains("## ") || instructions.contains("# ") {
+                content += instructions
+            } else {
+                content += "## Instructions\n\(instructions)"
+            }
+        }
+
+        return content
+    }
+
+    private func formatClaudeMdContent(resolution: Resolution) -> String {
+        guard let preferences = resolution.content["preferences"] as? [[String: Any]] else {
+            return ""
+        }
+
+        var content = "\n"
+
+        for pref in preferences {
+            if let section = pref["section"] as? String,
+               let items = pref["items"] as? [String] {
+                content += "\n## \(section)\n"
+                for item in items {
+                    content += "- \(item)\n"
+                }
+            }
+        }
+
+        return content
+    }
+
+    private func appendToFile(at url: URL, content: String) {
+        if FileManager.default.fileExists(atPath: url.path) {
+            // Append to existing file
+            if let fileHandle = try? FileHandle(forWritingTo: url) {
+                fileHandle.seekToEndOfFile()
+                if let data = content.data(using: .utf8) {
+                    fileHandle.write(data)
+                }
+                fileHandle.closeFile()
+            }
+        } else {
+            // Create new file
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    // MARK: - Status Tracking
+
+    private func markResolutionStatus(_ resolution: Resolution, status: String) {
+        // Update the JSON file to mark this action as applied/rejected
+        guard let data = try? Data(contentsOf: resolution.sourceFile),
+              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var resolutionsArray = json["resolutions"] as? [[String: Any]] else {
+            return
+        }
+
+        // Find and update the action
+        for i in 0..<resolutionsArray.count {
+            guard var actions = resolutionsArray[i]["actions"] as? [[String: Any]] else {
+                continue
+            }
+
+            for j in 0..<actions.count {
+                // Match by name and type
+                let actionName = actions[j]["name"] as? String ?? ""
+                let actionType = actions[j]["type"] as? String ?? ""
+
+                if actionName == resolution.name && actionType == resolution.type {
+                    actions[j]["status"] = status
+                    resolutionsArray[i]["actions"] = actions
+                    json["resolutions"] = resolutionsArray
+
+                    // Write back
+                    if let updatedData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
+                        try? updatedData.write(to: resolution.sourceFile)
+                    }
+                    return
+                }
+            }
+        }
     }
 
     func testDream() {
