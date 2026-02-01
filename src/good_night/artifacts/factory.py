@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .base import ArtifactHandler
+from .claude_md_handler import ClaudeMdHandler
 from .skills_handler import SkillsHandler
 
 
@@ -12,6 +13,8 @@ class ArtifactHandlerFactory:
     _handlers: dict[str, type[ArtifactHandler]] = {
         "claude-skills": SkillsHandler,
         "skill": SkillsHandler,  # Alias
+        "claude-md": ClaudeMdHandler,
+        "preferences": ClaudeMdHandler,  # Alias
     }
 
     @classmethod

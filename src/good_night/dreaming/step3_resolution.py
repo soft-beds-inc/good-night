@@ -33,11 +33,32 @@ For each issue, consider:
 - Should this be global or project-specific?
 - For recurring issues: should we update existing artifacts?
 
-When creating skills:
-- name: short, descriptive name (e.g., "confirm-destructive-actions")
-- description: what the skill does
-- when_to_use: conditions for applying this skill
-- instructions: detailed guidance for the AI
+CRITICAL: When calling create_resolution_action, you MUST provide a 'content' object with required fields:
+
+For skills (artifact_type: "claude-skills" or "skill"):
+```json
+{
+  "artifact_type": "claude-skills",
+  "name": "skill-name-here",
+  "content": {
+    "name": "Human Readable Name",
+    "description": "Brief description of what this skill does",
+    "instructions": "Detailed step-by-step instructions for the AI to follow",
+    "when_to_use": "Conditions when this skill should be applied"
+  },
+  "issue_refs": ["issue-id-1", "issue-id-2"],
+  "rationale": "Why this skill addresses the issue"
+}
+```
+
+Required content fields for skills:
+- name: Display name (e.g., "Confirm Destructive Actions")
+- description: What the skill accomplishes
+- instructions: Detailed guidance text for the AI
+
+Optional content fields:
+- when_to_use: When to apply this skill
+- examples: Example scenarios
 
 Guidelines:
 - Address high-severity issues first

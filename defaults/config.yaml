@@ -22,6 +22,7 @@ enabled:
     - claude-code
   artifacts:
     - claude-skills
+    - claude-md
   prompts:
     - pattern-detection
     - frustration-signals

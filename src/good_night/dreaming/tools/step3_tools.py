@@ -131,7 +131,10 @@ class Step3Context:
         if not name:
             return json.dumps({"error": "name is required"})
         if not content:
-            return json.dumps({"error": "content is required"})
+            return json.dumps({
+                "error": "content is required",
+                "hint": self._get_content_hint(artifact_type),
+            })
         if not issue_refs:
             return json.dumps({"error": "issue_refs is required (list of issue IDs)"})
 
@@ -276,12 +279,30 @@ class Step3Context:
         # Normalize name
         normalized = name.lower().replace(" ", "-").replace("_", "-")
 
-        if artifact_type == "skill":
+        if artifact_type in ("skill", "claude-skills"):
             return f"~/.claude/skills/{normalized}/SKILL.md"
         elif artifact_type == "guideline":
             return f"~/.good-night/guidelines/{normalized}.md"
         else:
             return f"~/.good-night/artifacts/{artifact_type}/{normalized}"
+
+    def _get_content_hint(self, artifact_type: str) -> str:
+        """Get a hint about the required content structure for an artifact type."""
+        if artifact_type in ("skill", "claude-skills"):
+            return (
+                "For skills/claude-skills, content must be an object with: "
+                "name (string), description (string), instructions (string). "
+                "Optional: when_to_use (string), examples (string). "
+                "Example: {\"name\": \"my-skill\", \"description\": \"What it does\", "
+                "\"instructions\": \"Detailed instructions for the AI\"}"
+            )
+        elif artifact_type == "guideline":
+            return (
+                "For guidelines, content must be an object with: "
+                "title (string), content (string). "
+                "Example: {\"title\": \"My Guideline\", \"content\": \"Guideline content...\"}"
+            )
+        return "content must be an object with the artifact's required fields"
 
     def _validate_action(self, action: ResolutionActionDraft) -> list[str]:
         """Validate a single action."""
@@ -291,13 +312,13 @@ class Step3Context:
             errors.append(f"Action {action.id}: name is required")
 
         if not action.content:
-            errors.append(f"Action {action.id}: content is required")
+            errors.append(f"Action {action.id}: content is required - {self._get_content_hint(action.artifact_type)}")
 
         if not action.issue_refs:
             errors.append(f"Action {action.id}: at least one issue_ref is required")
 
-        # Validate content based on artifact type
-        if action.artifact_type == "skill":
+        # Validate content based on artifact type (both "skill" and "claude-skills" use same handler)
+        if action.artifact_type in ("skill", "claude-skills"):
             required_fields = ["name", "description", "instructions"]
             for field in required_fields:
                 if field not in action.content:
@@ -352,29 +373,54 @@ def create_step3_tools(context: Step3Context) -> list[ToolDefinition]:
         ),
         ToolBuilder.create(
             name="create_resolution_action",
-            description="Create a resolution action. For skills, content should include: name, description, when_to_use, instructions.",
+            description="""Create a resolution action (skill, guideline, etc).
+
+IMPORTANT: The 'content' parameter is REQUIRED and must be an object with specific fields:
+- For 'skill' or 'claude-skills': {"name": "...", "description": "...", "instructions": "...", "when_to_use": "..."}
+- For 'guideline': {"title": "...", "content": "..."}
+
+Example for skill:
+{
+  "artifact_type": "claude-skills",
+  "name": "confirm-destructive-actions",
+  "content": {
+    "name": "Confirm Destructive Actions",
+    "description": "Always confirm before executing destructive operations",
+    "instructions": "Before running any command that deletes, removes, or overwrites data...",
+    "when_to_use": "When the user asks to delete files, drop databases, or perform irreversible operations"
+  },
+  "issue_refs": ["issue-123"]
+}""",
             handler=context.create_resolution_action,
             properties={
                 "artifact_type": {
                     "type": "string",
-                    "description": "Type of artifact (e.g., 'skill', 'guideline')",
+                    "description": "Type of artifact: 'claude-skills' (or 'skill'), 'guideline'",
                 },
                 "name": {
                     "type": "string",
-                    "description": "Name of the artifact",
+                    "description": "Name/identifier of the artifact (e.g., 'confirm-destructive-actions')",
                 },
                 "content": {
                     "type": "object",
-                    "description": "Content for the artifact. For skills: {name, description, when_to_use, instructions}",
+                    "description": "REQUIRED object with artifact-specific fields. For skills: {name: string, description: string, instructions: string, when_to_use?: string, examples?: string}",
+                    "properties": {
+                        "name": {"type": "string", "description": "Display name of the skill"},
+                        "description": {"type": "string", "description": "What this skill does"},
+                        "instructions": {"type": "string", "description": "Detailed instructions for the AI to follow"},
+                        "when_to_use": {"type": "string", "description": "When this skill should be applied"},
+                        "examples": {"type": "string", "description": "Optional examples"},
+                    },
+                    "required": ["name", "description", "instructions"],
                 },
                 "issue_refs": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "IDs of issues this action addresses",
+                    "description": "REQUIRED: List of issue IDs this action addresses",
                 },
                 "target_path": {
                     "type": "string",
-                    "description": "Optional: specific path for the artifact",
+                    "description": "Optional: specific path for the artifact (auto-generated if not provided)",
                 },
                 "operation": {
                     "type": "string",

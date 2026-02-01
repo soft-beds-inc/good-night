@@ -21,33 +21,53 @@ from .tools.step1_tools import Step1Context, create_step1_tools
 logger = logging.getLogger("good-night.analysis")
 
 
-ANALYSIS_BASE_PROMPT = """You are analyzing AI assistant conversations to find issues and patterns.
+ANALYSIS_BASE_PROMPT = """You are analyzing AI assistant conversations to find CROSS-CONVERSATION patterns and issues.
+
+CRITICAL REQUIREMENT - CROSS-CONVERSATION PATTERNS ONLY:
+================================================================================
+Only report issues that appear ACROSS MULTIPLE CONVERSATIONS (at least 2-3 different sessions).
+
+The user does THOUSANDS of interactions. Single-instance issues are NOT worth reporting.
+One-time corrections within a session are NORMAL interaction - ignore them completely.
+
+DO NOT REPORT:
+- One-time clarifications or corrections within a single conversation
+- Normal back-and-forth where user refines their request in one session
+- Any issue that appears in only ONE session
+- Standard iterative refinement (this is expected and normal)
+
+ONLY REPORT:
+- Issues that appear in 2-3+ DIFFERENT conversation sessions
+- Systematic patterns where the same problem recurs across sessions
+- Recurring user frustrations about the SAME topic in multiple conversations
+- Capability gaps that frustrate the user repeatedly over time
+================================================================================
 
 You have tools to explore conversations - use them to navigate and search efficiently.
-Report each issue you find using the report_issue tool.
+Report issues ONLY if they span multiple sessions using the report_issue tool.
 
 Your task:
 1. Start by listing conversations to see what's available
-2. Explore messages systematically, looking for patterns
-3. Use search to find specific issues (errors, frustration signals, repeated requests)
-4. Report issues you find with evidence (session_id, message_index, quotes)
-5. Be thorough but efficient - use search to find relevant sections
+2. Explore messages systematically, looking for CROSS-SESSION patterns
+3. Use search to find recurring issues across different conversations
+4. Only report issues that appear in 2+ different sessions with evidence
+5. Be highly selective - most single-session issues should be ignored
 
-Issue types to look for:
-- repeated_request: User asks for the same thing multiple times
-- frustration_signal: User shows frustration or dissatisfaction
-- style_mismatch: AI response style doesn't match user expectations
-- capability_gap: AI couldn't do something the user expected
-- knowledge_gap: AI lacked knowledge the user expected
-- other: Any other significant issue
+Issue types to look for (only if they appear across multiple sessions):
+- repeated_request: User asks for the same thing in multiple different sessions
+- frustration_signal: User shows similar frustration across multiple sessions
+- style_mismatch: AI response style consistently mismatches across sessions
+- capability_gap: Same capability gap frustrates user in multiple sessions
+- knowledge_gap: Same knowledge gap appears in multiple sessions
+- other: Any other significant cross-session pattern
 
 When reporting issues:
-- Include specific evidence with session_id and message_index
-- Quote relevant text to support your findings
-- Suggest potential resolutions when possible
+- MUST include evidence from 2+ different sessions (session_ids and message_indices)
+- Quote relevant text from MULTIPLE sessions to prove the pattern
+- Clearly state how many sessions are affected
 - Prioritize by severity (critical > high > medium > low)
 
-Be concise but thorough. Don't miss patterns that span multiple conversations.
+Be highly selective. The threshold for reporting is HIGH - only systematic, recurring issues matter.
 """
 
 
@@ -263,22 +283,27 @@ class AnalysisStep:
         total_messages = sum(len(c.messages) for c in conversations)
         human_messages = sum(len(c.human_messages) for c in conversations)
 
-        return f"""Analyze {len(conversations)} conversations for issues.
+        return f"""Analyze {len(conversations)} conversations for CROSS-CONVERSATION patterns.
 
 Conversation Summary:
 - Total conversations: {len(conversations)}
 - Total messages: {total_messages}
 - Human messages: {human_messages}
 
+CRITICAL: Only report issues that appear in 2-3+ DIFFERENT sessions.
+Single-session issues are NOT worth reporting - the user does thousands of interactions.
+One-time corrections are NORMAL - ignore them completely.
+
 Your task:
 1. List conversations to see what's available
-2. Explore messages, looking for patterns (use search and pagination)
-3. Report issues you find using the report_issue tool
-4. Be thorough but efficient - use search to find relevant sections
+2. Look for RECURRING patterns that appear ACROSS different sessions
+3. Use search to find if similar issues occur in multiple conversations
+4. Only report issues with evidence from 2+ different sessions
+5. Be highly selective - most issues should NOT be reported
 
-Focus on: repeated requests, user frustration, style mismatches, capability gaps.
+Focus on: patterns that REPEAT across sessions, not one-time occurrences.
 
-Start by listing the conversations, then systematically analyze them."""
+Start by listing the conversations, then look for cross-conversation patterns."""
 
     def _extract_summary(self, response) -> str:
         """Extract a summary from the agent's final response."""
