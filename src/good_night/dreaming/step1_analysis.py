@@ -132,6 +132,7 @@ class AnalysisStep:
 
         # Merge and deduplicate
         merged = merge_analysis_reports([report])
+        merged.connector_id = connector.connector_id
         return merged
 
     async def _run_single_agent(
