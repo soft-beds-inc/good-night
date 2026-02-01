@@ -21,7 +21,8 @@ from .tools.step1_tools import Step1Context, create_step1_tools
 logger = logging.getLogger("good-night.analysis")
 
 
-ANALYSIS_BASE_PROMPT = """You are analyzing AI assistant conversations to find CROSS-CONVERSATION patterns and issues.
+ANALYSIS_BASE_PROMPT = """
+You are analyzing AI assistant conversations to find CROSS-CONVERSATION patterns and issues.
 
 CRITICAL REQUIREMENT - CROSS-CONVERSATION PATTERNS ONLY:
 ================================================================================
@@ -37,7 +38,7 @@ DO NOT REPORT:
 - Standard iterative refinement (this is expected and normal)
 
 ONLY REPORT:
-- Issues that appear in 2-3+ DIFFERENT conversation sessions
+- Issues that appear in 2-3+ DIFFERENT conversation sessions OR within the same session in-between compactions
 - Systematic patterns where the same problem recurs across sessions
 - Recurring user frustrations about the SAME topic in multiple conversations
 - Capability gaps that frustrate the user repeatedly over time
@@ -93,7 +94,7 @@ When reporting issues:
 - Set local_change based on whether all evidence is from the same working_directory
 - Prioritize by severity (critical > high > medium > low)
 
-Be highly selective. The threshold for reporting is HIGH - only systematic, recurring issues matter.
+Be highly selective. The threshold for reporting is MEDIUM - only systematic, recurring issues matter.
 """
 
 
@@ -137,83 +138,66 @@ class AnalysisStep:
                 summary="No conversations to analyze",
             )
 
-        # Determine how many agents to use
-        num_agents = self.config.dreaming.exploration_agents
+        # Group conversations by working_directory (project folder)
+        folder_groups: dict[str, list[Conversation]] = {}
+        for conv in conversations:
+            wd = conv.metadata.get("working_directory", "") if conv.metadata else ""
+            folder_key = wd or "(no project)"
+            if folder_key not in folder_groups:
+                folder_groups[folder_key] = []
+            folder_groups[folder_key].append(conv)
 
-        if num_agents == 1:
-            # Single agent mode
-            report = await self._run_single_agent(
-                connector.connector_id,
-                conversations,
-                prompt_filter,
-            )
-        else:
-            # Multi-agent mode - split conversations
-            report = await self._run_parallel_agents(
-                connector.connector_id,
-                conversations,
-                prompt_filter,
-                num_agents,
-            )
-
-        # Merge and deduplicate
-        merged = merge_analysis_reports([report])
-        merged.connector_id = connector.connector_id
-        return merged
-
-    async def _run_single_agent(
-        self,
-        connector_id: str,
-        conversations: list[Conversation],
-        prompt_filter: list[str] | None,
-    ) -> AnalysisReport:
-        """Run analysis with a single agent."""
-        agent_id = f"step1-{connector_id}"
-        return await self._run_agent(
-            agent_id,
-            conversations,
+        # Run one agent per folder in parallel
+        reports = await self._run_agents_per_folder(
+            connector.connector_id,
+            folder_groups,
             prompt_filter,
         )
 
-    async def _run_parallel_agents(
+        # Merge and deduplicate
+        merged = merge_analysis_reports(reports)
+        merged.connector_id = connector.connector_id
+        return merged
+
+    async def _run_agents_per_folder(
         self,
         connector_id: str,
-        conversations: list[Conversation],
+        folder_groups: dict[str, list[Conversation]],
         prompt_filter: list[str] | None,
-        num_agents: int,
-    ) -> AnalysisReport:
-        """Run analysis with multiple parallel agents."""
-        # Split conversations among agents
-        chunks = [conversations[i::num_agents] for i in range(num_agents)]
-
-        # Run agents in parallel
+    ) -> list[AnalysisReport]:
+        """Run one agent per project folder in parallel."""
         tasks = []
-        for i, chunk in enumerate(chunks):
-            if chunk:  # Skip empty chunks
-                agent_id = f"step1-agent-{i+1}"
-                tasks.append(self._run_agent(agent_id, chunk, prompt_filter))
+        for folder_path, convs in folder_groups.items():
+            if not convs:
+                continue
+            # Create a short folder name for agent ID
+            folder_name = folder_path.split("/")[-1] if "/" in folder_path else folder_path
+            folder_name = folder_name[:20]  # Truncate for readability
+            agent_id = f"step1-{connector_id}-{folder_name}"
+            tasks.append(self._run_agent(agent_id, convs, prompt_filter, folder_path))
+
+        if not tasks:
+            return []
 
         reports = await asyncio.gather(*tasks)
-
-        # Merge all reports
-        merged = merge_analysis_reports(list(reports))
-        merged.connector_id = connector_id
-        return merged
+        return list(reports)
 
     async def _run_agent(
         self,
         agent_id: str,
         conversations: list[Conversation],
         prompt_filter: list[str] | None,
+        folder_path: str | None = None,
     ) -> AnalysisReport:
         """Run a single analysis agent."""
         # Emit start event
+        folder_info = f" in {folder_path.split('/')[-1]}" if folder_path else ""
         self.event_stream.emit(AgentEvent(
             timestamp=datetime.now(),
             agent_id=agent_id,
             agent_type="analysis",
             event_type="thinking",
-            summary=f"Starting analysis of {len(conversations)} conversations",
+            summary=f"Starting analysis of {len(conversations)} conversations{folder_info}",
         ))
 
         # Build system prompt from enabled prompts
@@ -239,8 +223,8 @@ class AnalysisStep:
             max_tokens=4096,
         )
 
-        # Build initial prompt
-        initial_prompt = self._build_initial_prompt(conversations)
+        # Build initial prompt with folder context
+        initial_prompt = self._build_initial_prompt(conversations, folder_path)
 
         from ..providers.types import TokenUsage
 
@@ -304,30 +288,33 @@ class AnalysisStep:
             enabled_prompts,
         )
 
-    def _build_initial_prompt(self, conversations: list[Conversation]) -> str:
+    def _build_initial_prompt(
+        self,
+        conversations: list[Conversation],
+        folder_path: str | None = None,
+    ) -> str:
         """Build the initial prompt for the agent."""
         # Calculate some stats for context
         total_messages = sum(len(c.messages) for c in conversations)
         human_messages = sum(len(c.human_messages) for c in conversations)
 
-        # Count unique working directories (projects)
-        working_dirs: set[str] = set()
-        for c in conversations:
-            if c.metadata:
-                wd = c.metadata.get("working_directory", "")
-                if wd:
-                    working_dirs.add(wd)
-        num_projects = len(working_dirs)
+        folder_context = ""
+        if folder_path and folder_path != "(no project)":
+            folder_name = folder_path.split("/")[-1]
+            folder_context = f"\nProject folder: {folder_name}\nFull path: {folder_path}\n"
+            # All conversations are from same folder, so issues are likely local_change=true
+            local_hint = "Since all conversations are from the SAME project folder, issues are likely local_change=true (project-specific) unless they reflect general user preferences."
+        else:
+            local_hint = "Set local_change=true ONLY for project-specific tech/conventions, false for general preferences."
 
         return f"""Analyze {len(conversations)} conversations for CROSS-CONVERSATION patterns.
-
+{folder_context}
 Conversation Summary:
 - Total conversations: {len(conversations)}
 - Total messages: {total_messages}
 - Human messages: {human_messages}
-- Unique projects (working directories): {num_projects}
 
-CRITICAL: Only report issues that appear in 2-3+ DIFFERENT sessions.
+CRITICAL: Only report issues that appear in 2-3+ DIFFERENT sessions OR in between compactions of the same session
 Single-session issues are NOT worth reporting - the user does thousands of interactions.
 One-time corrections are NORMAL - ignore them completely.
 
@@ -335,8 +322,8 @@ Your task:
 1. START with scan_recent_human_messages() to quickly see what users are asking
 2. Look for RECURRING patterns in the scan (similar requests, frustrations, corrections)
 3. Use search_messages() to verify patterns appear across multiple sessions
-4. Only report issues with evidence from 2+ different sessions
-5. Set local_change=true ONLY for project-specific tech/conventions, false for general preferences
+4. Only report issues with evidence from 2+ different sessions or in-between compactions
+5. {local_hint}
 6. Be highly selective - most issues should NOT be reported
 
 Focus on: patterns that REPEAT across sessions, not one-time occurrences.

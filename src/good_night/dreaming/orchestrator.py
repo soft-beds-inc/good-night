@@ -3,7 +3,7 @@
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -122,6 +122,7 @@ class DreamingOrchestrator:
         self._connector_filter: list[str] | None = None
         self._prompt_filter: list[str] | None = None
         self._event_callback: Callable[[AgentEvent], None] | None = None
+        self._conversation_limit: int | None = None  # Override for testing
 
     def set_connector_filter(self, connectors: list[str]) -> None:
         """Set filter for which connectors to process."""
@@ -130,6 +131,10 @@ class DreamingOrchestrator:
     def set_prompt_filter(self, prompts: list[str]) -> None:
         """Set filter for which prompts to run."""
         self._prompt_filter = prompts
+
+    def set_conversation_limit(self, limit: int) -> None:
+        """Set limit for number of conversations (for testing)."""
+        self._conversation_limit = limit
 
     def set_event_callback(self, callback: Callable[[AgentEvent], None]) -> None:
         """Set callback for event notifications."""
@@ -359,11 +364,33 @@ class DreamingOrchestrator:
         return result
 
     async def _extract_conversations(self, connector) -> list:
-        """Extract conversations from a connector."""
-        # Get last processed timestamp
-        state = self.state_manager.get_connector_state(connector.connector_id)
-        since = state.last_processed
+        """Extract conversations from a connector.
 
-        # Extract new conversations
-        batch = await connector.extract_conversations(since=since, limit=5)
+        Logic:
+        - If --limit is set: use that limit (for testing)
+        - If first run (no last_processed): look back initial_lookback_days
+        - Otherwise: get all conversations since last_processed (no limit)
+        """
+        state = self.state_manager.get_connector_state(connector.connector_id)
+
+        # Override mode: use explicit limit (for testing)
+        if self._conversation_limit is not None:
+            batch = await connector.extract_conversations(
+                since=state.last_processed,
+                limit=self._conversation_limit,
+            )
+            return batch.conversations
+
+        # First run: no last_processed, use initial_lookback_days
+        if state.last_processed is None:
+            lookback_days = self.config.dreaming.initial_lookback_days
+            since = datetime.now() - timedelta(days=lookback_days)
+            logger.info(f"First run for {connector.connector_id}, looking back {lookback_days} days")
+        else:
+            # Subsequent runs: get all since last processed
+            since = state.last_processed
+            logger.info(f"Resuming from {since.isoformat()} for {connector.connector_id}")
+
+        # No limit - get all conversations since the cutoff
+        batch = await connector.extract_conversations(since=since, limit=None)
         return batch.conversations

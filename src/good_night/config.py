@@ -44,12 +44,13 @@ class ProviderSettings:
 class DreamingSettings:
     exploration_agents: int = 1
     historical_lookback: int = 7
+    initial_lookback_days: int = 7  # Days to look back on first run
 
 
 @dataclass
 class EnabledComponents:
     connectors: list[str] = field(default_factory=lambda: ["claude-code"])
-    artifacts: list[str] = field(default_factory=lambda: ["claude-skills"])
+    # artifacts: removed - if .md file exists in ~/.good-night/artifacts/, it's enabled
     prompts: list[str] = field(default_factory=lambda: ["pattern-detection", "frustration-signals"])
 
 
@@ -127,7 +128,7 @@ def _parse_config(data: dict[str, Any]) -> Config:
         e = data["enabled"]
         config.enabled = EnabledComponents(
             connectors=e.get("connectors", ["claude-code"]),
-            artifacts=e.get("artifacts", ["claude-skills"]),
+            # artifacts: removed - scanned from ~/.good-night/artifacts/ directory
             prompts=e.get("prompts", ["pattern-detection", "frustration-signals"]),
         )
 
@@ -136,6 +137,7 @@ def _parse_config(data: dict[str, Any]) -> Config:
         config.dreaming = DreamingSettings(
             exploration_agents=dr.get("exploration_agents", 1),
             historical_lookback=dr.get("historical_lookback", 7),
+            initial_lookback_days=dr.get("initial_lookback_days", 7),
         )
 
     return config

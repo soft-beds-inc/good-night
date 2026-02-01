@@ -20,9 +20,7 @@ provider:
 enabled:
   connectors:
     - claude-code
-  artifacts:
-    - claude-skills
-    - claude-md
+  # artifacts: auto-detected from ~/.good-night/artifacts/*.md files
   prompts:
     - pattern-detection
     - frustration-signals

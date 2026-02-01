@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from ..artifacts.factory import ArtifactHandlerFactory
 from ..config import load_config
 from ..daemon.lifecycle import DaemonLifecycle, get_runtime_dir
 from ..dreaming.events import AgentEvent, AgentEventStream
@@ -287,7 +288,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             },
             enabled={
                 "connectors": config.enabled.connectors,
-                "artifacts": config.enabled.artifacts,
+                "artifacts": ArtifactHandlerFactory.scan_available(get_runtime_dir()),
                 "prompts": config.enabled.prompts,
             },
             dreaming={

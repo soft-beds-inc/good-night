@@ -28,7 +28,7 @@ RESOLUTION_SCHEMA = {
                         "type": "array",
                         "items": {
                             "type": "object",
-                            "required": ["type", "target", "operation"],
+                            "required": ["type", "target", "operation", "local_change"],
                             "properties": {
                                 "type": {"type": "string"},
                                 "target": {"type": "string"},
@@ -46,6 +46,7 @@ RESOLUTION_SCHEMA = {
                                     "enum": ["low", "medium", "high"],
                                 },
                                 "rationale": {"type": "string"},
+                                "local_change": {"type": "boolean"},
                             },
                         },
                     },
@@ -137,7 +138,7 @@ class ResolutionValidator:
                     errors.append(f"{action_prefix}: must be an object")
                     continue
 
-                for field in ["type", "target", "operation"]:
+                for field in ["type", "target", "operation", "local_change"]:
                     if field not in action:
                         errors.append(f"{action_prefix}: missing '{field}'")
 
@@ -153,6 +154,12 @@ class ResolutionValidator:
                     if action["priority"] not in valid_priorities:
                         errors.append(
                             f"{action_prefix}.priority: must be one of {valid_priorities}"
+                        )
+
+                if "local_change" in action:
+                    if not isinstance(action["local_change"], bool):
+                        errors.append(
+                            f"{action_prefix}.local_change: must be a boolean"
                         )
 
         return errors

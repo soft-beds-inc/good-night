@@ -27,6 +27,7 @@ class ResolutionActionDraft:
     references: list[ConversationReference]  # Conversation context for traceability
     rationale: str
     priority: str = "medium"
+    local_change: bool = False  # True if project-specific, False if global
 
 
 @dataclass
@@ -135,6 +136,7 @@ class Step3Context:
         operation: str = "create",
         rationale: str = "",
         priority: str = "medium",
+        local_change: bool | None = None,
     ) -> str:
         """Create a resolution action (skill, guideline, etc)."""
         # Validate required fields
@@ -169,11 +171,16 @@ class Step3Context:
             return json.dumps({"error": f"Invalid operation: {operation}"})
 
         # Extract conversation references from issue evidence
+        # Also determine local_change from issues if not explicitly provided
         references: list[ConversationReference] = []
         seen_sessions: set[str] = set()
         all_issues = self.report.new_issues + self.report.recurring_issues
+        issues_local_change = False
         for issue in all_issues:
             if issue.id in issue_refs:
+                # If any referenced issue is local, the action should be local
+                if issue.local_change:
+                    issues_local_change = True
                 for evidence in issue.evidence:
                     if evidence.session_id and evidence.session_id not in seen_sessions:
                         seen_sessions.add(evidence.session_id)
@@ -181,6 +188,9 @@ class Step3Context:
                             session_id=evidence.session_id,
                             working_directory=evidence.working_directory,
                         ))
+
+        # Use explicit local_change if provided, otherwise infer from issues
+        final_local_change = local_change if local_change is not None else issues_local_change
 
         # Create draft action
         action = ResolutionActionDraft(
@@ -194,6 +204,7 @@ class Step3Context:
             references=references,
             rationale=rationale,
             priority=priority,
+            local_change=final_local_change,
         )
 
         self.resolution_actions.append(action)
@@ -294,7 +305,7 @@ class Step3Context:
         # Try to get output path from handler settings
         handler = self.artifact_handlers.get(artifact_type)
         if handler and handler.settings.output_path:
-            base_path = handler.settings.output_path
+            base_path = handler.settings.output_path.rstrip("/")
             return f"{base_path}/{normalized}"
 
         # Default paths based on artifact type
@@ -346,6 +357,7 @@ class Step3Context:
                 references=a.references,
                 priority=a.priority,
                 rationale=a.rationale,
+                local_change=a.local_change,
             )
             for a in self.resolution_actions
         ]
@@ -478,6 +490,11 @@ def create_step3_tools(context: Step3Context) -> list[ToolDefinition]:
                     "enum": ["low", "medium", "high"],
                     "description": "Priority level (default: medium)",
                     "default": "medium",
+                },
+                "local_change": {
+                    "type": "boolean",
+                    "description": "True if project-specific (artifact goes in project dir), False if global (artifact goes in ~/.claude/). Auto-inferred from issues if not provided.",
+                    "default": False,
                 },
             },
             required=["artifact_type", "name", "content", "issue_refs"],

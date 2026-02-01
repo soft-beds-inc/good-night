@@ -238,8 +238,11 @@ def dream(
     connector: Optional[str] = typer.Option(
         None, "--connector", "-c", help="Process specific connector only"
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show real-time agent events"
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Hide real-time agent events"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-l", help="Limit to last N conversations (for testing)"
     ),
 ) -> None:
     """Trigger a dreaming cycle manually."""
@@ -253,8 +256,7 @@ def dream(
     if dry_run:
         console.print("[yellow]Dry run mode - no changes will be made[/yellow]")
 
-    if verbose:
-        console.print("[dim]Verbose mode - showing agent events[/dim]")
+    if not quiet:
         console.print()
 
     async def run_dream() -> None:
@@ -268,10 +270,12 @@ def dream(
             orchestrator.set_connector_filter([connector])
         if module:
             orchestrator.set_prompt_filter([module])
+        if limit:
+            orchestrator.set_conversation_limit(limit)
 
-        # Set up live event display if verbose
+        # Set up live event display (default on, --quiet to disable)
         event_display: LiveEventDisplay | SimpleEventDisplay | None = None
-        if verbose:
+        if not quiet:
             event_display = create_event_display()
             orchestrator.set_event_callback(event_display.on_event)
             event_display.start()
@@ -282,7 +286,7 @@ def dream(
             if event_display:
                 event_display.stop()
 
-        if verbose:
+        if not quiet:
             console.print()  # Add space after events
 
         if result.success:

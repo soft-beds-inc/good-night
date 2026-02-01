@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from .base import ArtifactHandler
-from .claude_md_handler import ClaudeMdHandler
+from .generic_handler import GenericHandler
 from .skills_handler import SkillsHandler
 
 
@@ -13,9 +13,35 @@ class ArtifactHandlerFactory:
     _handlers: dict[str, type[ArtifactHandler]] = {
         "claude-skills": SkillsHandler,
         "skill": SkillsHandler,  # Alias
-        "claude-md": ClaudeMdHandler,
-        "preferences": ClaudeMdHandler,  # Alias
+        "claude-md": GenericHandler,
+        "preferences": GenericHandler,  # Alias
     }
+
+    @classmethod
+    def scan_available(cls, runtime_dir: Path) -> list[str]:
+        """
+        Scan artifacts directory for available artifact types.
+
+        An artifact is available if its .md definition file exists.
+
+        Args:
+            runtime_dir: Path to runtime directory (~/.good-night)
+
+        Returns:
+            List of artifact IDs (e.g., ["claude-skills", "claude-md"])
+        """
+        artifacts_dir = runtime_dir / "artifacts"
+        if not artifacts_dir.exists():
+            return []
+
+        available = []
+        for md_file in artifacts_dir.glob("*.md"):
+            artifact_id = md_file.stem  # e.g., "claude-skills" from "claude-skills.md"
+            # Only include if we have a handler for it
+            if artifact_id in cls._handlers:
+                available.append(artifact_id)
+
+        return available
 
     @classmethod
     def create(cls, artifact_id: str, runtime_dir: Path) -> ArtifactHandler:
@@ -36,7 +62,7 @@ class ArtifactHandlerFactory:
             )
 
         handler_class = cls._handlers[artifact_id]
-        handler = handler_class(runtime_dir)
+        handler = handler_class(artifact_id, runtime_dir)
 
         # Load definition if available
         definition_path = runtime_dir / "artifacts" / f"{artifact_id}.md"

@@ -111,12 +111,15 @@ class ResolutionStep:
             summary=f"Creating resolutions for {len(issues_to_resolve)} issues",
         ))
 
+        # Scan for available artifacts (if .md file exists, it's enabled)
+        available_artifacts = ArtifactHandlerFactory.scan_available(self.runtime_dir)
+
         # Create context
         context = Step3Context(
             report=report,
             artifacts_dir=self.runtime_dir / "artifacts",
             output_dir=self.runtime_dir / "output",
-            enabled_artifacts=self.config.enabled.artifacts,
+            enabled_artifacts=available_artifacts,
             dry_run=dry_run,
         )
 
@@ -212,8 +215,9 @@ class ResolutionStep:
         """Build system prompt including artifact module documentation."""
         prompt = RESOLUTION_BASE_PROMPT
 
-        # Add artifact type context
-        for artifact_id in self.config.enabled.artifacts:
+        # Add artifact type context (scan for available artifacts)
+        available_artifacts = ArtifactHandlerFactory.scan_available(self.runtime_dir)
+        for artifact_id in available_artifacts:
             try:
                 handler = ArtifactHandlerFactory.create(artifact_id, self.runtime_dir)
                 context = handler.get_agent_context()

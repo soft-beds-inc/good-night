@@ -41,6 +41,7 @@ class ResolutionAction:
     references: list[ConversationReference] = field(default_factory=list)  # Conversation context
     priority: str = "medium"
     rationale: str = ""
+    local_change: bool = False  # True if project-specific, False if global
 
 
 @dataclass
@@ -83,6 +84,7 @@ class Resolution:
                             "references": [r.to_dict() for r in a.references],
                             "priority": a.priority,
                             "rationale": a.rationale,
+                            "local_change": a.local_change,
                         }
                         for a in cr.actions
                     ],
@@ -116,6 +118,7 @@ class Resolution:
                     ],
                     priority=a.get("priority", "medium"),
                     rationale=a.get("rationale", ""),
+                    local_change=a.get("local_change", False),
                 )
                 for a in res_data.get("actions", [])
             ]

@@ -9,7 +9,8 @@ from .base import Artifact, ArtifactHandler, ContentSchema
 class SkillsHandler(ArtifactHandler):
     """Handler for creating Claude Code skill files."""
 
-    def __init__(self, runtime_dir: Path):
+    def __init__(self, artifact_id: str, runtime_dir: Path):  # noqa: ARG002
+        # Always use "claude-skills" as the ID for skills (ignore passed artifact_id)
         super().__init__("claude-skills", runtime_dir)
 
     @property
