@@ -25,6 +25,29 @@ Use Skills instead when:
 - output_path: ./CLAUDE.md
 - scope: project
 
+## Content Schema
+```yaml
+required_fields:
+  preferences: list - List of preference strings or section objects
+
+optional_fields: {}
+
+example:
+  preferences:
+    - Use type hints for all function parameters and return values
+    - Prefer early returns to reduce nesting
+    - section: Code Style
+      items:
+        - Use snake_case for Python functions and variables
+        - Prefer explicit imports over star imports
+    - section: Testing
+      items:
+        - Use pytest for all tests
+        - Aim for 80% code coverage
+
+hint: For CLAUDE.md, content must have a 'preferences' key containing a list. Items can be strings (added to General section) or objects with 'section' and 'items' keys for organized preferences.
+```
+
 ## File Format
 CLAUDE.md files use markdown with optional sections:
 ```markdown

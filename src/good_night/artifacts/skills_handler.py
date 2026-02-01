@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from .base import Artifact, ArtifactHandler
+from .base import Artifact, ArtifactHandler, ContentSchema
 
 
 class SkillsHandler(ArtifactHandler):
@@ -15,6 +15,28 @@ class SkillsHandler(ArtifactHandler):
     @property
     def artifact_name(self) -> str:
         return "Claude Skills"
+
+    def get_content_schema(self) -> ContentSchema:
+        """Get the content schema for skills."""
+        return ContentSchema(
+            required_fields={
+                "name": "string - The skill name (used as directory name)",
+                "description": "string - What this skill does",
+                "instructions": "string - Step-by-step instructions for executing the skill",
+            },
+            optional_fields={
+                "when_to_use": "string - Conditions when this skill should be invoked",
+                "examples": "string - Example usages or scenarios",
+            },
+            example={
+                "name": "run-tests",
+                "description": "Run the project test suite with coverage",
+                "instructions": "1. Activate the virtual environment\n2. Run pytest with coverage flags\n3. Generate coverage report\n4. Report any failures",
+                "when_to_use": "When the user asks to run tests or validate changes",
+                "examples": "User: 'run the tests'\nUser: 'check if my changes break anything'",
+            },
+            hint="For skills, content must be an object with 'name', 'description', and 'instructions' as required fields. Skills define reusable, procedural instructions for specific tasks.",
+        )
 
     def _get_output_dir(self) -> Path:
         """Get the output directory for skills."""

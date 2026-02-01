@@ -20,49 +20,37 @@ logger = logging.getLogger("good-night.resolution")
 
 RESOLUTION_BASE_PROMPT = """You create resolutions for AI assistant issues.
 
-Resolutions are concrete actions like creating skills or guidelines that will improve the AI's behavior.
+Resolutions are concrete actions (creating or updating artifacts) that will improve the AI's behavior.
 
-Your task:
+## Your Task
+
 1. Review issues that need resolution (use get_issues_to_resolve)
-2. Understand available artifact types (use get_artifact_types)
-3. Create resolution actions for each issue
-4. Finalize when all issues are addressed
+2. Check available artifact types and their schemas (use get_artifact_types)
+3. Create resolution actions for each issue (use create_resolution_action)
+4. Finalize when all issues are addressed (use finalize_resolution)
+
+## Creating Resolution Actions
+
+Use create_resolution_action with these parameters:
+- artifact_type: The type of artifact to create (from get_artifact_types)
+- name: Identifier for the artifact (e.g., "confirm-destructive-actions")
+- content: Object with fields required by that artifact type (see artifact schemas below)
+- issue_refs: List of issue IDs this resolves
+- rationale: Brief explanation of why this resolves the issues
+
+IMPORTANT: Each artifact type has its own required content fields. Check the artifact type
+documentation below for the specific schema and validation rules.
+
+## Decision Guidelines
 
 For each issue, consider:
-- What artifact type is most appropriate (skill, guideline, etc.)
+- What artifact type is most appropriate for this issue?
 - Should this be global or project-specific?
-- For recurring issues: should we update existing artifacts?
+- For recurring issues: should we update an existing artifact instead?
 
-CRITICAL: When calling create_resolution_action, you MUST provide a 'content' object with required fields:
-
-For skills (artifact_type: "claude-skills" or "skill"):
-```json
-{
-  "artifact_type": "claude-skills",
-  "name": "skill-name-here",
-  "content": {
-    "name": "Human Readable Name",
-    "description": "Brief description of what this skill does",
-    "instructions": "Detailed step-by-step instructions for the AI to follow",
-    "when_to_use": "Conditions when this skill should be applied"
-  },
-  "issue_refs": ["issue-id-1", "issue-id-2"],
-  "rationale": "Why this skill addresses the issue"
-}
-```
-
-Required content fields for skills:
-- name: Display name (e.g., "Confirm Destructive Actions")
-- description: What the skill accomplishes
-- instructions: Detailed guidance text for the AI
-
-Optional content fields:
-- when_to_use: When to apply this skill
-- examples: Example scenarios
-
-Guidelines:
+Quality over quantity:
 - Address high-severity issues first
-- Group related issues into single resolutions when appropriate
+- Group related issues into a single resolution when appropriate
 - Include clear rationale for each action
 - Prefer updating existing artifacts for recurring issues
 """
@@ -260,8 +248,7 @@ Steps:
 4. Review pending actions with list_pending_actions
 5. Call finalize_resolution when complete
 
-For each issue, create appropriate artifacts (skills, guidelines).
-Consider grouping related issues if applicable.
+Consider grouping related issues if they can be addressed by a single artifact.
 """
 
     def _save_resolution(self, resolution: Resolution, dry_run: bool) -> Path:

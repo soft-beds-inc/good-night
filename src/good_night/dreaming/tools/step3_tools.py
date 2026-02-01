@@ -40,6 +40,17 @@ class Step3Context:
     dry_run: bool = False
     resolution_actions: list[ResolutionActionDraft] = field(default_factory=list)
     _finalized: bool = False
+    artifact_handlers: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Load artifact handlers for enabled artifact types."""
+        for artifact_id in self.enabled_artifacts:
+            try:
+                handler = ArtifactHandlerFactory.create(artifact_id, self.artifacts_dir.parent)
+                self.artifact_handlers[artifact_id] = handler
+            except Exception:
+                # Handler not available, skip
+                pass
 
     async def get_issues_to_resolve(self) -> str:
         """Get new and recurring issues that need resolution."""
@@ -279,29 +290,21 @@ class Step3Context:
         # Normalize name
         normalized = name.lower().replace(" ", "-").replace("_", "-")
 
-        if artifact_type in ("skill", "claude-skills"):
-            return f"~/.claude/skills/{normalized}/SKILL.md"
-        elif artifact_type == "guideline":
-            return f"~/.good-night/guidelines/{normalized}.md"
-        else:
-            return f"~/.good-night/artifacts/{artifact_type}/{normalized}"
+        # Try to get output path from handler settings
+        handler = self.artifact_handlers.get(artifact_type)
+        if handler and handler.settings.output_path:
+            base_path = handler.settings.output_path
+            return f"{base_path}/{normalized}"
+
+        # Default paths based on artifact type
+        return f"~/.good-night/artifacts/{artifact_type}/{normalized}"
 
     def _get_content_hint(self, artifact_type: str) -> str:
         """Get a hint about the required content structure for an artifact type."""
-        if artifact_type in ("skill", "claude-skills"):
-            return (
-                "For skills/claude-skills, content must be an object with: "
-                "name (string), description (string), instructions (string). "
-                "Optional: when_to_use (string), examples (string). "
-                "Example: {\"name\": \"my-skill\", \"description\": \"What it does\", "
-                "\"instructions\": \"Detailed instructions for the AI\"}"
-            )
-        elif artifact_type == "guideline":
-            return (
-                "For guidelines, content must be an object with: "
-                "title (string), content (string). "
-                "Example: {\"title\": \"My Guideline\", \"content\": \"Guideline content...\"}"
-            )
+        handler = self.artifact_handlers.get(artifact_type)
+        if handler:
+            schema = handler.get_content_schema()
+            return schema.hint
         return "content must be an object with the artifact's required fields"
 
     def _validate_action(self, action: ResolutionActionDraft) -> list[str]:
@@ -317,12 +320,13 @@ class Step3Context:
         if not action.issue_refs:
             errors.append(f"Action {action.id}: at least one issue_ref is required")
 
-        # Validate content based on artifact type (both "skill" and "claude-skills" use same handler)
-        if action.artifact_type in ("skill", "claude-skills"):
-            required_fields = ["name", "description", "instructions"]
-            for field in required_fields:
-                if field not in action.content:
-                    errors.append(f"Action {action.id}: skill content missing '{field}'")
+        # Validate content using handler schema
+        handler = self.artifact_handlers.get(action.artifact_type)
+        if handler and action.content:
+            schema = handler.get_content_schema()
+            for field_name in schema.required_fields:
+                if field_name not in action.content:
+                    errors.append(f"Action {action.id}: {action.artifact_type} content missing '{field_name}'")
 
         return errors
 
@@ -358,8 +362,72 @@ class Step3Context:
         )
 
 
+def _build_resolution_action_description(context: Step3Context) -> str:
+    """Build dynamic description for create_resolution_action tool."""
+    lines = ["Create a resolution action for an artifact.", ""]
+    lines.append("IMPORTANT: The 'content' parameter is REQUIRED and must be an object with specific fields based on artifact type:")
+    lines.append("")
+
+    # Build content hints from handlers
+    for artifact_id, handler in context.artifact_handlers.items():
+        schema = handler.get_content_schema()
+        lines.append(f"For '{artifact_id}': {schema.hint}")
+
+    lines.append("")
+    lines.append(f"Available artifact types: {list(context.artifact_handlers.keys())}")
+
+    return "\n".join(lines)
+
+
+def _build_content_schema(context: Step3Context) -> dict[str, Any]:
+    """Build dynamic JSON schema for content property from all handlers."""
+    # Collect all unique properties from all handlers
+    all_properties: dict[str, dict[str, Any]] = {}
+
+    for handler in context.artifact_handlers.values():
+        schema = handler.get_content_schema()
+
+        for field_name, field_desc in schema.required_fields.items():
+            if field_name not in all_properties:
+                all_properties[field_name] = {
+                    "type": "string",
+                    "description": field_desc,
+                }
+
+        for field_name, field_desc in schema.optional_fields.items():
+            if field_name not in all_properties:
+                all_properties[field_name] = {
+                    "type": "string",
+                    "description": field_desc,
+                }
+
+    # Build description listing all artifact types
+    type_descriptions = []
+    for artifact_id, handler in context.artifact_handlers.items():
+        schema = handler.get_content_schema()
+        required = list(schema.required_fields.keys())
+        optional = list(schema.optional_fields.keys())
+        type_descriptions.append(f"{artifact_id}: required={required}, optional={optional}")
+
+    content_description = "REQUIRED object with artifact-specific fields. " + "; ".join(type_descriptions)
+
+    return {
+        "type": "object",
+        "description": content_description,
+        "properties": all_properties,
+    }
+
+
 def create_step3_tools(context: Step3Context) -> list[ToolDefinition]:
     """Create tool definitions for Step 3 resolution."""
+    # Build dynamic description and schema from handlers
+    resolution_action_description = _build_resolution_action_description(context)
+    content_schema = _build_content_schema(context)
+
+    # Build artifact type description dynamically
+    artifact_types_list = list(context.artifact_handlers.keys())
+    artifact_type_description = f"Type of artifact. Available: {artifact_types_list}"
+
     return [
         ToolBuilder.create(
             name="get_issues_to_resolve",
@@ -373,46 +441,18 @@ def create_step3_tools(context: Step3Context) -> list[ToolDefinition]:
         ),
         ToolBuilder.create(
             name="create_resolution_action",
-            description="""Create a resolution action (skill, guideline, etc).
-
-IMPORTANT: The 'content' parameter is REQUIRED and must be an object with specific fields:
-- For 'skill' or 'claude-skills': {"name": "...", "description": "...", "instructions": "...", "when_to_use": "..."}
-- For 'guideline': {"title": "...", "content": "..."}
-
-Example for skill:
-{
-  "artifact_type": "claude-skills",
-  "name": "confirm-destructive-actions",
-  "content": {
-    "name": "Confirm Destructive Actions",
-    "description": "Always confirm before executing destructive operations",
-    "instructions": "Before running any command that deletes, removes, or overwrites data...",
-    "when_to_use": "When the user asks to delete files, drop databases, or perform irreversible operations"
-  },
-  "issue_refs": ["issue-123"]
-}""",
+            description=resolution_action_description,
             handler=context.create_resolution_action,
             properties={
                 "artifact_type": {
                     "type": "string",
-                    "description": "Type of artifact: 'claude-skills' (or 'skill'), 'guideline'",
+                    "description": artifact_type_description,
                 },
                 "name": {
                     "type": "string",
-                    "description": "Name/identifier of the artifact (e.g., 'confirm-destructive-actions')",
+                    "description": "Name/identifier of the artifact",
                 },
-                "content": {
-                    "type": "object",
-                    "description": "REQUIRED object with artifact-specific fields. For skills: {name: string, description: string, instructions: string, when_to_use?: string, examples?: string}",
-                    "properties": {
-                        "name": {"type": "string", "description": "Display name of the skill"},
-                        "description": {"type": "string", "description": "What this skill does"},
-                        "instructions": {"type": "string", "description": "Detailed instructions for the AI to follow"},
-                        "when_to_use": {"type": "string", "description": "When this skill should be applied"},
-                        "examples": {"type": "string", "description": "Optional examples"},
-                    },
-                    "required": ["name", "description", "instructions"],
-                },
+                "content": content_schema,
                 "issue_refs": {
                     "type": "array",
                     "items": {"type": "string"},

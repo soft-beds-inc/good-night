@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .base import Artifact, ArtifactHandler
+from .base import Artifact, ArtifactHandler, ContentSchema
 
 
 class ClaudeMdHandler(ArtifactHandler):
@@ -16,6 +16,36 @@ class ClaudeMdHandler(ArtifactHandler):
     @property
     def artifact_name(self) -> str:
         return "CLAUDE.md Preferences"
+
+    def get_content_schema(self) -> ContentSchema:
+        """Get the content schema for CLAUDE.md preferences."""
+        return ContentSchema(
+            required_fields={
+                "preferences": "list - List of preference strings or section objects",
+            },
+            optional_fields={},
+            example={
+                "preferences": [
+                    "Use type hints for all function parameters and return values",
+                    "Prefer early returns to reduce nesting",
+                    {
+                        "section": "Code Style",
+                        "items": [
+                            "Use snake_case for Python functions and variables",
+                            "Prefer explicit imports over star imports",
+                        ],
+                    },
+                    {
+                        "section": "Testing",
+                        "items": [
+                            "Use pytest for all tests",
+                            "Aim for 80% code coverage",
+                        ],
+                    },
+                ],
+            },
+            hint="For CLAUDE.md, content must have a 'preferences' key containing a list. Items can be strings (added to General section) or objects with 'section' and 'items' keys for organized preferences.",
+        )
 
     def _get_output_path(self) -> Path:
         """Get the output path for CLAUDE.md."""

@@ -10,6 +10,16 @@ from ..storage.resolutions import ResolutionAction
 
 
 @dataclass
+class ContentSchema:
+    """Schema describing the content structure for an artifact type."""
+
+    required_fields: dict[str, str]
+    optional_fields: dict[str, str]
+    example: dict[str, Any]
+    hint: str
+
+
+@dataclass
 class ArtifactSettings:
     """Settings parsed from an artifact definition."""
 
@@ -168,6 +178,17 @@ class ArtifactHandler(ABC):
     @abstractmethod
     def artifact_name(self) -> str:
         """Return the name of this artifact type."""
+        ...
+
+    @abstractmethod
+    def get_content_schema(self) -> ContentSchema:
+        """
+        Get the content schema for this artifact type.
+
+        Returns:
+            ContentSchema describing required fields, optional fields,
+            example content, and a hint for tool descriptions.
+        """
         ...
 
     @abstractmethod
